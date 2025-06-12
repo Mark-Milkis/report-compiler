@@ -1,0 +1,28 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{pdfpages}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{fancyhdr}
+\setlength{\headheight}{14pt} % Adjust headheight for fancyhdr
+\usepackage{hyperref}
+
+% Set up headers and footers
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\thepage}
+\lhead{Engineering Report}
+
+% Set graphics path to look in common directories
+\graphicspath{{./}{./media/}{./images/}}
+
+\providecommand{\pandocbounded}[1]{#1} % Define pandocbounded to fix PDF compilation error
+
+\begin{document}
+
+$body$
+
+\end{document}
