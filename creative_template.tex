@@ -1,0 +1,412 @@
+\documentclass[11pt,a4paper]{article}
+
+% Ultra-modern packages for enhanced creative styling
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% Page layout and geometry
+\usepackage[margin=0.8in, top=1.5in, bottom=1.3in]{geometry}
+
+% Advanced graphics and colors
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{pdfpages}
+\usetikzlibrary{shadows,patterns,decorations.pathmorphing,positioning,calc}
+
+% Ultra-vibrant color palette inspired by modern UI design
+\definecolor{neonblue}{RGB}{0, 191, 255}          % Electric blue
+\definecolor{neonpurple}{RGB}{138, 43, 226}       % Electric purple  
+\definecolor{neongreen}{RGB}{50, 205, 50}         % Electric green
+\definecolor{neonorange}{RGB}{255, 69, 0}         % Electric orange
+\definecolor{neonpink}{RGB}{255, 20, 147}         % Electric pink
+\definecolor{neonteal}{RGB}{64, 224, 208}         % Electric teal
+\definecolor{neonyellow}{RGB}{255, 215, 0}        % Electric yellow
+\definecolor{darkslate}{RGB}{47, 79, 79}          % Dark slate
+\definecolor{lightslate}{RGB}{119, 136, 153}      % Light slate
+\definecolor{ultralight}{RGB}{248, 248, 255}      % Ghost white
+\definecolor{crimson}{RGB}{220, 20, 60}           % Crimson red
+
+% Typography with creative spacing
+\usepackage{setspace}
+\usepackage{parskip}
+\setlength{\parskip}{0.7em}
+\setlength{\parindent}{0pt}
+\onehalfspacing
+
+% Math packages
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+
+% Creative table styling
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{colortbl}
+
+% Ultra-creative list styling
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=*}
+\setlist[enumerate]{leftmargin=*}
+
+% Rainbow list bullets
+\setlist[itemize,1]{label=\textcolor{neonblue}{\huge\textbullet}}
+\setlist[itemize,2]{label=\textcolor{neonpurple}{\large\textendash}}
+\setlist[itemize,3]{label=\textcolor{neonorange}{\normalsize\textasteriskcentered}}
+\setlist[enumerate,1]{label=\textcolor{neonblue}{\Large\bfseries\arabic*.}}
+\setlist[enumerate,2]{label=\textcolor{neonpurple}{\large\bfseries\alph*)}}
+
+% Advanced headers and footers
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+
+% Ultra-creative section styling with neon colors
+\usepackage{sectsty}
+\sectionfont{\Huge\bfseries\color{neonblue}}
+\subsectionfont{\LARGE\bfseries\color{neonpurple}}
+\subsubsectionfont{\Large\bfseries\color{neonorange}}
+
+% Enhanced hyperlinks with neon colors
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=neonblue,
+    filecolor=neonorange,      
+    urlcolor=neonpurple,
+    citecolor=neongreen,
+    pdfborder={0 0 0},
+    bookmarksnumbered=true,
+    bookmarksopen=true
+}
+
+% Code highlighting
+\usepackage{listings}
+\usepackage{fancyvrb}
+
+% Pandoc syntax highlighting
+$if(highlighting-macros)$
+$highlighting-macros$
+$endif$
+
+% Ultra-creative custom commands
+\newcommand{\neonhighlight}[1]{\colorbox{neonyellow!30}{\textbf{\color{darkslate}#1}}}
+\newcommand{\electric}[1]{\textcolor{neonblue}{\textbf{\textsc{#1}}}}
+\newcommand{\flash}[1]{\colorbox{neonpink!20}{\textcolor{neonpink}{\textbf{#1}}}}
+\newcommand{\glow}[1]{\textcolor{neongreen}{\textbf{\textit{#1}}}}
+\newcommand{\alert}[1]{\colorbox{crimson!20}{\textcolor{crimson}{\textbf{! #1}}}}
+\newcommand{\success}[1]{\colorbox{neongreen!20}{\textcolor{neongreen}{\textbf{+ #1}}}}
+\newcommand{\info}[1]{\colorbox{neonteal!20}{\textcolor{neonteal}{\textbf{i #1}}}}
+
+% Title and metadata
+$if(title)$
+\title{$title$}
+$endif$
+
+$if(author)$
+\author{$for(author)$$author$$sep$ \and $endfor$}
+$endif$
+
+$if(date)$
+\date{$date$}
+$else$
+\date{\today}
+$endif$
+
+% Ultra-creative header design with animated-like elements
+\pagestyle{fancy}
+\fancyhf{} % Clear all header and footer fields
+
+% Futuristic header with neon gradient effect
+\fancyhead[L]{%
+    \begin{tikzpicture}[remember picture,overlay]
+        % Neon gradient background
+        \shade[left color=neonblue, right color=neonpurple] (0,0) rectangle (8cm,1.2cm);
+        % Glow effect
+        \fill[neonblue!30] (0,0) rectangle (8cm,0.3cm);
+        \fill[neonpurple!30] (0,0.9cm) rectangle (8cm,1.2cm);
+    \end{tikzpicture}%
+    \raisebox{0.3cm}{\color{white}\bfseries\Large\hspace{0.7em}$if(company)$$company$$else$FUTURE ENGINEERING$endif$\hspace{0.7em}}%
+}
+
+\fancyhead[R]{%
+    \raisebox{0.2cm}{%
+        \begin{tikzpicture}
+            \fill[neonteal] (0,0) rectangle (6cm,0.8cm);
+            \fill[neongreen!70] (0,0) rectangle (6cm,0.3cm);
+            \node[white,font=\bfseries] at (3cm,0.4cm) {\small $if(project)$$project$$else$$if(title)$$title$$endif$$endif$};
+        \end{tikzpicture}%
+    }%
+}
+
+% Futuristic footer with neon accents
+\fancyfoot[L]{%
+    \begin{tikzpicture}
+        \fill[lightslate!20] (0,0) rectangle (4cm,0.6cm);
+        \fill[neonorange!30] (0,0) rectangle (4cm,0.2cm);
+        \node[darkslate,font=\small\bfseries] at (2cm,0.3cm) {$if(department)$$department$$else$RESEARCH DIVISION$endif$};
+    \end{tikzpicture}%
+}
+
+\fancyfoot[C]{%
+    \begin{tikzpicture}
+        % Neon page number box
+        \fill[neonblue] (0,0) rectangle (3cm,0.8cm);
+        \fill[neonpurple!50] (0,0) rectangle (3cm,0.3cm);
+        \node[white,font=\Large\bfseries] at (1.5cm,0.4cm) {\thepage\ / \pageref{LastPage}};
+        % Glow effect
+        \draw[neonblue!50,line width=2pt] (0,0) rectangle (3cm,0.8cm);
+    \end{tikzpicture}%
+}
+
+\fancyfoot[R]{%
+    \begin{tikzpicture}
+        \fill[neonpink!20] (0,0) rectangle (3.5cm,0.6cm);
+        \fill[neonyellow!40] (0,0) rectangle (3.5cm,0.2cm);
+        \node[darkslate,font=\small\bfseries] at (1.75cm,0.3cm) {$if(date)$$date$$else$\today$endif$};
+    \end{tikzpicture}%
+}
+
+% Remove default rules and create custom neon effects
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust spacing for creative design
+\setlength{\headheight}{2cm}
+\setlength{\footskip}{1.5cm}
+
+% Revolutionary title page design
+\renewcommand{\maketitle}{%
+    \begin{titlepage}
+        % Futuristic background with neon grid
+        \begin{tikzpicture}[remember picture,overlay]
+            % Gradient background
+            \shade[top color=darkslate!10, bottom color=ultralight] (current page.south west) rectangle (current page.north east);
+            
+            % Neon grid pattern
+            \foreach \x in {0,2,...,20} {
+                \draw[neonblue!20,line width=0.5pt] ([xshift=\x cm]current page.south west) -- ([xshift=\x cm]current page.north west);
+            }
+            \foreach \y in {0,2,...,30} {
+                \draw[neonblue!20,line width=0.5pt] ([yshift=\y cm]current page.south west) -- ([yshift=\y cm]current page.south east);
+            }
+            
+            % Floating neon elements
+            \fill[neonorange!40] ([xshift=16cm,yshift=25cm]current page.south west) circle (3cm);
+            \fill[neonpurple!30] ([xshift=-2cm,yshift=20cm]current page.south west) circle (4cm);
+            \fill[neongreen!25] ([xshift=12cm,yshift=5cm]current page.south west) circle (2.5cm);
+            \fill[neonteal!35] ([xshift=3cm,yshift=15cm]current page.south west) circle (3.5cm);
+            
+            % Top neon bar
+            \shade[left color=neonblue, right color=neonpurple] (current page.north west) rectangle ([yshift=-2cm]current page.north east);
+            \fill[neonyellow!50] (current page.north west) rectangle ([yshift=-0.5cm]current page.north east);
+        \end{tikzpicture}
+        
+        \begin{center}
+            \vspace*{3.5cm}
+            
+            % Company logo with neon frame
+            $if(logo)$
+            \begin{tikzpicture}
+                \fill[white] (0,0) rectangle (8cm,4cm);
+                \draw[neonblue,line width=3pt] (0,0) rectangle (8cm,4cm);
+                \node at (4cm,2cm) {\includegraphics[width=0.25\textwidth]{$logo$}};
+            \end{tikzpicture}\\[1.5cm]
+            $endif$
+            
+            % Ultra-futuristic title design
+            \begin{tikzpicture}
+                % Title background with neon glow
+                \fill[white] (0,0) rectangle (14cm,4cm);
+                \draw[neonblue,line width=4pt,drop shadow] (0,0) rectangle (14cm,4cm);
+                \shade[top color=neonblue!10, bottom color=ultralight] (0,0) rectangle (14cm,4cm);
+                
+                \node[anchor=center] at (7cm,2cm) {
+                    \begin{minipage}{12cm}
+                        \centering
+                        {\Huge\bfseries\color{neonblue}$if(title)$$title$$endif$}
+                    \end{minipage}
+                };
+            \end{tikzpicture}
+            
+            \vspace{1cm}
+            
+            % Futuristic subtitle
+            $if(subtitle)$
+            \begin{tikzpicture}
+                \fill[neonpurple!20] (0,0) rectangle (10cm,1.5cm);
+                \node[neonpurple,font=\LARGE\bfseries] at (5cm,0.75cm) {\textit{$subtitle$}};
+            \end{tikzpicture}\\[1.5cm]
+            $endif$
+            
+            % Neon decorative elements
+            \begin{tikzpicture}
+                \draw[line width=5pt,neonblue] (0,0) -- (10cm,0);
+                \draw[line width=3pt,neonpurple] (1cm,0.3cm) -- (9cm,0.3cm);
+                \draw[line width=2pt,neonorange] (2cm,0.6cm) -- (8cm,0.6cm);
+                \draw[line width=1pt,neongreen] (3cm,0.9cm) -- (7cm,0.9cm);
+                
+                % Floating neon dots
+                \fill[neonyellow] (0,0) circle (0.2cm);
+                \fill[neonpink] (10cm,0) circle (0.2cm);
+                \fill[neonteal] (5cm,0.9cm) circle (0.15cm);
+            \end{tikzpicture}\\[2cm]
+            
+            % Author section with holographic effect
+            $if(author)$
+            \begin{tikzpicture}
+                % Holographic background
+                \shade[left color=neonteal!30, right color=neongreen!30] (0,0) rectangle (12cm,4cm);
+                \fill[ultralight!80] (0.5cm,0.5cm) rectangle (11.5cm,3.5cm);
+                \draw[neonteal,line width=2pt] (0,0) rectangle (12cm,4cm);
+                  \node[anchor=center] at (6cm,2.5cm) {
+                    {\large\bfseries\color{darkslate}PREPARED BY}
+                };
+                
+                \node[anchor=center] at (6cm,1.5cm) {
+                    {\LARGE\bfseries\color{neonblue}$for(author)$$author$$sep$ \\ $endfor$}
+                };
+            \end{tikzpicture}\\[2cm]
+            $endif$
+            
+            % Company info with neon styling
+            $if(company)$
+            \begin{tikzpicture}
+                \fill[neonorange!20] (0,0) rectangle (8cm,1.5cm);
+                \draw[neonorange,line width=2pt] (0,0) rectangle (8cm,1.5cm);
+                \node[neonorange,font=\Large\bfseries] at (4cm,0.75cm) {$company$};
+            \end{tikzpicture}\\[0.7cm]
+            $endif$
+            
+            $if(department)$
+            {\large\color{lightslate}\textbf{$department$}}\\[1.5cm]
+            $endif$
+            
+            \vfill
+            
+            % Ultra-futuristic date design
+            \begin{tikzpicture}
+                % Neon date box with glow effect
+                \shade[left color=neonpink, right color=neonyellow] (0,0) rectangle (8cm,2cm);
+                \fill[white!90] (0.3cm,0.3cm) rectangle (7.7cm,1.7cm);
+                \draw[neonpink,line width=3pt] (0,0) rectangle (8cm,2cm);
+                
+                \node[darkslate,font=\Huge\bfseries] at (4cm,1cm) {$if(date)$$date$$else$\today$endif$};
+                
+                % Corner decorations
+                \fill[neonyellow] (0,0) circle (0.3cm);
+                \fill[neonpink] (8cm,0) circle (0.3cm);
+                \fill[neonpink] (0,2cm) circle (0.3cm);
+                \fill[neonyellow] (8cm,2cm) circle (0.3cm);
+            \end{tikzpicture}
+            
+            \vspace{1.5cm}
+        \end{center}
+    \end{titlepage}
+    \setcounter{page}{2}
+}
+
+\begin{document}
+
+% Ultra-creative title page
+$if(title)$
+\maketitle
+$endif$
+
+% Neon-styled table of contents
+$if(toc)$
+\newpage
+\begin{center}
+    {\Huge\bfseries\color{neonblue}TABLE OF CONTENTS}
+\end{center}
+\vspace{1cm}
+{\color{darkslate}\tableofcontents}
+\newpage
+$endif$
+
+% List of figures with style
+$if(lof)$
+\begin{center}
+    {\LARGE\bfseries\color{neonpurple}LIST OF FIGURES}
+\end{center}
+\vspace{0.5cm}
+{\color{darkslate}\listoffigures}
+\newpage
+$endif$
+
+% List of tables with style
+$if(lot)$
+\begin{center}
+    {\LARGE\bfseries\color{neonorange}LIST OF TABLES}
+\end{center}
+\vspace{0.5cm}
+{\color{darkslate}\listoftables}
+\newpage
+$endif$
+
+% Main document body
+$body$
+
+% Ultra-futuristic back cover
+\newpage
+\thispagestyle{empty}
+
+\begin{tikzpicture}[remember picture,overlay]
+    % Futuristic background
+    \shade[bottom color=darkslate!20, top color=ultralight] (current page.south west) rectangle (current page.north east);
+    
+    % Neon circuit pattern
+    \draw[neonblue!40,line width=2pt] ([xshift=2cm,yshift=5cm]current page.south west) -- ([xshift=8cm,yshift=5cm]current page.south west) -- ([xshift=8cm,yshift=10cm]current page.south west);
+    \draw[neonpurple!40,line width=2pt] ([xshift=12cm,yshift=15cm]current page.south west) -- ([xshift=18cm,yshift=15cm]current page.south west) -- ([xshift=18cm,yshift=20cm]current page.south west);
+    \draw[neonorange!40,line width=2pt] ([xshift=1cm,yshift=25cm]current page.south west) -- ([xshift=6cm,yshift=25cm]current page.south west) -- ([xshift=6cm,yshift=28cm]current page.south west);
+    
+    % Floating neon orbs
+    \fill[neongreen!40] ([xshift=15cm,yshift=8cm]current page.south west) circle (2cm);
+    \fill[neonteal!30] ([xshift=3cm,yshift=18cm]current page.south west) circle (2.5cm);
+    \fill[neonpink!35] ([xshift=16cm,yshift=22cm]current page.south west) circle (1.8cm);
+\end{tikzpicture}
+
+\vspace*{\fill}
+\begin{center}
+    \begin{tikzpicture}
+        % Futuristic content box
+        \shade[top color=neonblue!20, bottom color=neonpurple!20] (0,0) rectangle (14cm,8cm);
+        \fill[white!95] (0.5cm,0.5cm) rectangle (13.5cm,7.5cm);
+        \draw[neonblue,line width=3pt] (0,0) rectangle (14cm,8cm);
+        
+        % Header section
+        \shade[left color=neonblue, right color=neonpurple] (0.5cm,6.5cm) rectangle (13.5cm,7.5cm);
+        \node[white,font=\Huge\bfseries] at (7cm,7cm) {FUTURE REPORT};
+        
+        % Content
+        \node[anchor=center] at (7cm,4.5cm) {
+            \begin{minipage}{12cm}
+                \centering
+                {\LARGE\bfseries\color{neonblue}Advanced Report Compiler System}\\[0.7cm]
+                {\large\color{darkslate}Revolutionizing Engineering Documentation}\\[0.5cm]
+                {\color{lightslate}Next-generation integration of Word, PDF, and LaTeX}\\[1.2cm]
+                
+                \begin{tikzpicture}
+                    \fill[neonteal!20] (0,0) rectangle (10cm,1.5cm);
+                    \draw[neonteal,line width=2pt] (0,0) rectangle (10cm,1.5cm);
+                    \node[neonteal,font=\Large\bfseries] at (5cm,0.75cm) {$if(company)$$company$$else$FUTURE ENGINEERING$endif$};
+                \end{tikzpicture}\\[0.5cm]
+                
+                {\small\color{lightslate}\textbf{$if(date)$$date$$else$\today$endif$ • Generated with Creative Template}}
+            \end{minipage}
+        };
+        
+        % Corner tech elements
+        \fill[neonyellow] (0.5cm,0.5cm) rectangle (1.5cm,1.5cm);
+        \fill[neonpink] (12.5cm,0.5cm) rectangle (13.5cm,1.5cm);
+        \fill[neongreen] (0.5cm,6.5cm) rectangle (1.5cm,7.5cm);
+        \fill[neonorange] (12.5cm,6.5cm) rectangle (13.5cm,7.5cm);
+    \end{tikzpicture}
+\end{center}
+\vspace*{\fill}
+
+\end{document}
