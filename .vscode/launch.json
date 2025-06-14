@@ -1,7 +1,6 @@
 {
     "version": "0.2.0",
-    "configurations": [
-        {
+    "configurations": [        {
             "name": "Debug Report Compiler - Example File",
             "type": "debugpy",
             "request": "launch",
@@ -9,6 +8,25 @@
             "args": [
                 "${workspaceFolder}/examples/simple-report/bridge_report.docx",
                 "${workspaceFolder}/examples/simple-report/debug_output.pdf"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": true,
+            "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "Debug Report Compiler - Example File (Keep Temp)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/report_compiler.py",
+            "args": [
+                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
+                "${workspaceFolder}/examples/simple-report/debug_output.pdf",
+                "--keep-temp"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
@@ -36,15 +54,15 @@
             },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
-        },
-        {
+        },        {
             "name": "Debug Report Compiler - Step Into All Code",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/report_compiler.py",
             "args": [
                 "${workspaceFolder}/examples/simple-report/bridge_report.docx",
-                "${workspaceFolder}/examples/simple-report/debug_detailed.pdf"
+                "${workspaceFolder}/examples/simple-report/debug_detailed.pdf",
+                "--keep-temp"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",

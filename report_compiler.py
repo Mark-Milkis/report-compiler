@@ -13,6 +13,7 @@ import argparse
 import win32com.client as win32
 from docx import Document
 from docx.shared import RGBColor, Pt
+from docx.enum.text import WD_BREAK
 import fitz  # PyMuPDF
 import time
 
@@ -25,19 +26,20 @@ class ReportCompiler:
     1. Finding PDF insertion placeholders in the Word document
     2. Modifying the document to create blank pages with hidden markers
     3. Converting the modified document to PDF
-    4. Overlaying the appendix PDFs onto the blank pages
-    """
+    4. Overlaying the appendix PDFs onto the blank pages    """
     
-    def __init__(self, input_docx_path, final_pdf_path):
+    def __init__(self, input_docx_path, final_pdf_path, keep_temp=False):
         """
         Initialize the ReportCompiler with input and output paths.
         
         Args:
             input_docx_path (str): Absolute path to the source .docx file
             final_pdf_path (str): Absolute path for the final output .pdf file
+            keep_temp (bool): Whether to keep temporary files for debugging
         """
         self.input_docx_path = os.path.abspath(input_docx_path)
         self.final_pdf_path = os.path.abspath(final_pdf_path)
+        self.keep_temp = keep_temp
         
         # Create unique temporary file names using timestamp
         timestamp = str(int(time.time() * 1000))
@@ -149,30 +151,19 @@ class ReportCompiler:
                     continue
                 
                 # Create unique marker text for this placeholder
-                marker_text = f"%%APPENDIX_START_{placeholder_index}%%"
-                
-                # Insert hidden marker before clearing the paragraph
-                # Add the marker as invisible text
-                run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
-                run.clear()
-                marker_run = paragraph.add_run(marker_text)
-                marker_run.font.size = Pt(1)  # Minimal size
-                marker_run.font.color.rgb = RGBColor(255, 255, 255)  # White color (invisible)
-                
-                # Clear the placeholder text
+                marker_text = f"%%APPENDIX_START_{placeholder_index}%%"                # Clear the placeholder text and add page breaks for the appendix
                 paragraph.clear()
-                  # Add page breaks for each page in the appendix
+                
+                # Add visible marker for the first page (will be removed during overlay)
+                marker_run = paragraph.add_run(marker_text)
+                marker_run.font.size = Pt(12)  # Visible size
+                marker_run.font.color.rgb = RGBColor(255, 0, 0)  # Red color (visible)
+                
+                # Add page breaks for each page in the appendix
                 for i in range(page_count):
-                    if i == 0:
-                        # First page - add marker and page break
-                        marker_run = paragraph.add_run(marker_text)
-                        marker_run.font.size = Pt(1)
-                        marker_run.font.color.rgb = RGBColor(255, 255, 255)
-                    
-                    if i < page_count - 1:  # Don't add page break after the last page
-                        # Add page break
+                    if i > 0:  # Add page break before each page except the first
                         run = paragraph.add_run()
-                        run.add_break()
+                        run.add_break(WD_BREAK.PAGE)
                 
                 # Store placeholder information
                 placeholders.append({
@@ -224,8 +215,7 @@ class ReportCompiler:
             
             output_path = os.path.abspath(output_path)
             print(f"    Exporting to PDF: {output_path}")
-            
-            # Export to PDF with minimal, tested parameters
+              # Export to PDF with minimal, tested parameters
             doc.ExportAsFixedFormat(
                 OutputFileName=output_path,
                 ExportFormat=wdExportFormatPDF,
@@ -259,7 +249,7 @@ class ReportCompiler:
     
     def _overlay_pdfs(self, placeholders):
         """
-        Overlay appendix PDFs onto the base PDF using the placeholder markers.
+        Overlay appendix PDFs onto the base PDF using visible marker detection.
         
         Args:
             placeholders (list): List of placeholder dictionaries
@@ -277,8 +267,9 @@ class ReportCompiler:
                 print(f"    Processing appendix {index + 1}: {os.path.basename(pdf_path)}")
                 print(f"      Searching for marker: {marker}")
                 
-                # Search for the marker text in the base PDF
+                # Search for the marker in the PDF
                 start_page_index = None
+                
                 for page_num in range(base_pdf.page_count):
                     page = base_pdf[page_num]
                     text_instances = page.search_for(marker)
@@ -286,12 +277,19 @@ class ReportCompiler:
                     if text_instances:
                         start_page_index = page_num
                         print(f"      ✓ Found marker on page {page_num + 1}")
+                        
+                        # Remove the marker text from the page
+                        for inst in text_instances:
+                            # Add a white rectangle to cover the marker text
+                            page.add_redact_annot(inst, fill=(1, 1, 1))  # White fill
+                        page.apply_redactions()
+                        print(f"      ✓ Removed marker text from page {page_num + 1}")
                         break
                 
                 if start_page_index is None:
                     print(f"      ⚠ WARNING: Marker not found in PDF, skipping appendix")
                     continue
-                
+
                 # Open the appendix PDF
                 print(f"      Opening appendix PDF: {pdf_path}")
                 appendix_pdf = fitz.open(pdf_path)
@@ -335,7 +333,18 @@ class ReportCompiler:
     def _cleanup(self):
         """
         Clean up temporary files created during the process.
+        Skips cleanup if keep_temp flag is set.
         """
+        if self.keep_temp:
+            print("\nKeeping temporary files for debugging:")
+            files_to_keep = [self.temp_docx_path, self.temp_pdf_path]
+            for file_path in files_to_keep:
+                if os.path.exists(file_path):
+                    print(f"  ✓ Kept: {file_path}")
+                else:
+                    print(f"  - Not found: {os.path.basename(file_path)}")
+            return
+        
         print("\nCleaning up temporary files...")
         
         files_to_remove = [self.temp_docx_path, self.temp_pdf_path]
@@ -365,8 +374,7 @@ Examples:
 
 Placeholder format in Word document:
   [[INSERT: appendices/calculations.pdf]]
-  [[INSERT: C:\\Shared\\analysis.pdf]]
-        """
+  [[INSERT: C:\\Shared\\analysis.pdf]]        """
     )
     
     parser.add_argument(
@@ -377,6 +385,12 @@ Placeholder format in Word document:
     parser.add_argument(
         'output_file', 
         help='Path for the output PDF file (.pdf)'
+    )
+    
+    parser.add_argument(
+        '--keep-temp',
+        action='store_true',
+        help='Keep temporary files for debugging purposes'
     )
     
     args = parser.parse_args()
@@ -394,8 +408,7 @@ Placeholder format in Word document:
     if not args.output_file.lower().endswith('.pdf'):
         print("ERROR: Output file must be a .pdf file")
         return 1
-    
-    # Create output directory if it doesn't exist
+      # Create output directory if it doesn't exist
     output_dir = os.path.dirname(os.path.abspath(args.output_file))
     if output_dir and not os.path.exists(output_dir):
         try:
@@ -407,7 +420,7 @@ Placeholder format in Word document:
     
     try:
         # Create and run the compiler
-        compiler = ReportCompiler(args.input_file, args.output_file)
+        compiler = ReportCompiler(args.input_file, args.output_file, keep_temp=args.keep_temp)
         compiler.run()
         return 0
         
