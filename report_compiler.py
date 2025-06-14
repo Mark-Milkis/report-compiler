@@ -16,6 +16,8 @@ from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_BREAK
 import fitz  # PyMuPDF
 import time
+import zipfile
+import xml.etree.ElementTree as ET
 
 
 class ReportCompiler:
@@ -103,12 +105,16 @@ class ReportCompiler:
     def _find_placeholders_and_modify_docx(self):
         """
         Find PDF placeholders in the DOCX and modify the document.
+        This includes both regular paragraph placeholders and text box placeholders.
         
         Returns:
             tuple: (modified_doc, placeholders_list)
                 - modified_doc: The modified docx.Document object
                 - placeholders_list: List of dictionaries containing placeholder info
         """
+        # First, check for text box placeholders (these have priority for sized insertion)
+        textbox_placeholders = self._find_textbox_placeholders()
+        
         # Open the source document
         doc = Document(self.input_docx_path)
         placeholders = []
@@ -176,6 +182,160 @@ class ReportCompiler:
         
         return doc, placeholders
     
+    def _find_textbox_placeholders(self):
+        """
+        Find PDF placeholders inside text boxes and extract text box dimensions.
+        
+        Returns:
+            list: List of dictionaries containing textbox placeholder info with dimensions
+        """
+        print("  Scanning for text box placeholders...")
+        textbox_placeholders = []
+        
+        try:
+            with zipfile.ZipFile(self.input_docx_path, 'r') as docx_zip:
+                if 'word/document.xml' not in docx_zip.namelist():
+                    return textbox_placeholders
+                
+                with docx_zip.open('word/document.xml') as xml_file:
+                    xml_content = xml_file.read().decode('utf-8')
+                    
+                    # Parse XML
+                    root = ET.fromstring(xml_content)
+                    
+                    # Define namespaces
+                    namespaces = {
+                        'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+                        'v': 'urn:schemas-microsoft-com:vml',
+                        'wps': 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',
+                        'wp': 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
+                        'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'
+                    }
+                    
+                    # Search for text boxes with INSERT placeholders
+                    textbox_types = [
+                        ('.//v:textbox', 'VML textbox'),
+                        ('.//w:txbxContent', 'Word textbox content')
+                    ]
+                    
+                    for xpath, description in textbox_types:
+                        textboxes = root.findall(xpath, namespaces)
+                        
+                        for i, textbox in enumerate(textboxes):
+                            # Get all text content from the text box
+                            text_elements = textbox.findall('.//w:t', namespaces)
+                            if text_elements:
+                                all_text = ''.join([t.text for t in text_elements if t.text])
+                                
+                                # Check if this text box contains an INSERT placeholder
+                                match = self.placeholder_regex.search(all_text)
+                                if match:
+                                    pdf_path_raw = match.group(1).strip()
+                                    
+                                    print(f"    Found textbox placeholder: {pdf_path_raw}")
+                                    
+                                    # Resolve relative path
+                                    input_dir = os.path.dirname(self.input_docx_path)
+                                    if not os.path.isabs(pdf_path_raw):
+                                        pdf_path = os.path.join(input_dir, pdf_path_raw)
+                                    else:
+                                        pdf_path = pdf_path_raw
+                                    
+                                    pdf_path = os.path.abspath(pdf_path)
+                                    
+                                    # Validate that the PDF file exists
+                                    if not os.path.exists(pdf_path):
+                                        print(f"      ⚠ WARNING: PDF file not found: {pdf_path}")
+                                        continue
+                                    
+                                    # Get page count of the appendix PDF
+                                    try:
+                                        pdf_doc = fitz.open(pdf_path)
+                                        page_count = pdf_doc.page_count
+                                        pdf_doc.close()
+                                        print(f"      PDF has {page_count} page(s)")
+                                    except Exception as e:
+                                        print(f"      ⚠ ERROR: Cannot read PDF file: {e}")
+                                        continue
+                                    
+                                    # Try to find dimensions for this text box
+                                    dimensions = self._get_textbox_dimensions(textbox, namespaces)
+                                    
+                                    textbox_info = {
+                                        'pdf_path': pdf_path,
+                                        'pdf_path_raw': pdf_path_raw,
+                                        'page_count': page_count,
+                                        'textbox_type': description,
+                                        'textbox_text': all_text
+                                    }
+                                    
+                                    if dimensions:
+                                        textbox_info.update(dimensions)
+                                        print(f"      Textbox dimensions: {dimensions['width_inches']:.2f}\" x {dimensions['height_inches']:.2f}\"")
+                                    else:
+                                        print(f"      ⚠ Could not determine textbox dimensions")
+                                    
+                                    textbox_placeholders.append(textbox_info)
+        
+        except Exception as e:
+            print(f"    ⚠ Error scanning for textbox placeholders: {e}")
+        
+        return textbox_placeholders
+    
+    def _get_textbox_dimensions(self, textbox_elem, namespaces):
+        """
+        Extract dimensions from a text box element.
+        
+        Returns:
+            dict: Dictionary with width/height information or None
+        """
+        try:
+            # Method 1: Look for parent drawing element with extent
+            current = textbox_elem
+            for _ in range(10):  # Limit search depth
+                if current is None:
+                    break
+                    
+                # Look for extent elements in current or parent elements
+                extents = current.findall('.//a:ext', namespaces)
+                if extents:
+                    extent = extents[0]
+                    cx = extent.get('cx')
+                    cy = extent.get('cy')
+                    if cx and cy:
+                        width_inches = int(cx) / 914400
+                        height_inches = int(cy) / 914400
+                        return {
+                            'width_inches': width_inches,
+                            'height_inches': height_inches,
+                            'width_emus': cx,
+                            'height_emus': cy
+                        }
+                
+                # Move to parent element
+                current = current.getparent() if hasattr(current, 'getparent') else None
+            
+            # Method 2: Look for VML style attributes
+            style = textbox_elem.get('style', '')
+            if style:
+                width_match = re.search(r'width:([^;]+)', style)
+                height_match = re.search(r'height:([^;]+)', style)
+                if width_match and height_match:
+                    # Try to parse dimensions (this is approximate)
+                    width_str = width_match.group(1).strip()
+                    height_str = height_match.group(1).strip()
+                    return {
+                        'width_style': width_str,
+                        'height_style': height_str,
+                        'note': 'Dimensions from VML style (approximate)'
+                    }
+            
+            return None
+            
+        except Exception as e:
+            print(f"        Error extracting textbox dimensions: {e}")
+            return None
+
     def _convert_docx_to_pdf(self, input_path, output_path):
         """
         Convert a DOCX file to PDF using Microsoft Word automation.
