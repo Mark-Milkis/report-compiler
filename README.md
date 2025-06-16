@@ -6,22 +6,24 @@ A Python-based automated DOCX and PDF report compiler for engineering teams. Thi
 
 The Report Compiler automates the creation of comprehensive PDF reports by:
 
-1. **Finding PDF placeholders** in Word documents (`[[INSERT: path/to/file.pdf]]`)
-2. **Modifying the Word document** to create blank pages with visible markers
+1. **Finding PDF placeholders** in Word documents using two types of tags:
+   - `[[OVERLAY: path/to/file.pdf, page=5]]` for table-based overlays
+   - `[[INSERT: path/to/file.pdf]]` for paragraph-based insertions
+2. **Modifying the Word document** to create markers and page breaks
 3. **Converting to PDF** using Word automation (win32com)
-4. **Overlaying appendix PDFs** onto the blank pages using PyMuPDF
+4. **Processing PDF insertions** with overlays and merges using PyMuPDF
 
 ## Features
 
+- ✅ **Two insertion types** - Table-based overlays and paragraph-based merges
 - ✅ **Relative path support** - PDF paths resolved relative to the input Word document
 - ✅ **Page selection support** - Specify which pages to include from source PDFs using flexible syntax
 - ✅ **Multi-page PDF support** - Automatic cell replication for multi-page table overlays
-- ✅ **Annotation preservation** - PDF annotations automatically baked into content during overlay
-- ✅ **Robust page breaks** - Proper page breaks using `WD_BREAK.PAGE`
-- ✅ **Visible markers** - Red markers that are automatically removed during overlay
+- ✅ **Annotation preservation** - PDF annotations automatically baked into content during processing
+- ✅ **Marker removal** - Automatic removal of placement markers from final PDF
+- ✅ **Robust page breaks** - Proper page breaks for paragraph-based insertions
 - ✅ **Error handling** - Comprehensive error reporting and validation
 - ✅ **Debug support** - `--keep-temp` flag to retain temporary files for debugging
-- ✅ **VS Code integration** - Complete debugger launch configurations
 - ✅ **Table-based overlay** - Precise PDF placement using table dimensions and marker positioning
 - ✅ **Cell replication** - Multi-page PDFs create consecutive table cells automatically
 - ✅ **Intelligent positioning** - Uses table properties for automatic overlay rectangle calculation
@@ -46,25 +48,44 @@ python report_compiler.py input_report.docx output_report.pdf
 python report_compiler.py input_report.docx output_report.pdf --keep-temp
 ```
 
-### Disable Annotation Preservation (for faster processing)
-
-```bash
-python report_compiler.py input_report.docx output_report.pdf --no-annotations
-```
-
 ## Placeholder Format
 
-In your Word document, use the following format to insert PDF appendices:
+The Report Compiler supports two types of PDF insertion placeholders:
+
+### Table-based Overlays (OVERLAY tags)
+
+For inserting PDFs as overlays onto existing pages, preserving the main document's content and layout. Place these in **single-cell (1x1) tables**:
+
+```text
+[[OVERLAY: appendices/sketch.pdf]]
+[[OVERLAY: calculations/diagram.pdf, page=2]]
+[[OVERLAY: C:\Shared\drawing.pdf, page=1-3]]
+```
+
+### Paragraph-based Merges (INSERT tags)
+
+For inserting entire PDF pages after a marker position. The original paragraph content is preserved, and PDF pages are inserted immediately after it. Place these in **standalone paragraphs**:
 
 ```text
 [[INSERT: appendices/structural_analysis.pdf]]
-[[INSERT: calculations/load_analysis.pdf]]
+[[INSERT: calculations/load_analysis.pdf:1-5]]
 [[INSERT: C:\Shared\external_report.pdf]]
 ```
 
-### Page Selection (New!)
+### Page Selection
 
-You can now specify which pages to include from the source PDF:
+Both OVERLAY and INSERT tags support page selection:
+
+**OVERLAY page selection (using `page=` parameter):**
+
+```text
+[[OVERLAY: appendices/report.pdf, page=5]]        # Page 5 only
+[[OVERLAY: appendices/report.pdf, page=1-3]]      # Pages 1, 2, and 3
+[[OVERLAY: appendices/report.pdf, page=1,3,5]]    # Pages 1, 3, and 5
+[[OVERLAY: appendices/report.pdf, page=2-]]       # Pages 2 to end
+```
+
+**INSERT page selection (using `:` separator):**
 
 ```text
 [[INSERT: appendices/report.pdf:1-3]]      # Pages 1, 2, and 3
@@ -84,39 +105,45 @@ You can now specify which pages to include from the source PDF:
 
 **Note:** Page numbers are 1-indexed (first page = 1). Invalid page numbers are automatically filtered out.
 
-**Supported Formats:**
-
-- **Table-based overlays**: Single-cell tables containing `[[INSERT: path.pdf]]` for precise placement
-- **Paragraph-based merges**: Regular paragraphs containing `[[INSERT: path.pdf]]` for full-page insertion
-
-**Multi-page PDFs**: Automatically handled via cell replication (table-based) or sequential page insertion (paragraph-based)
+**Multi-page PDFs**: Automatically handled via cell replication (table-based overlays) or sequential page insertion (paragraph-based merges)
 
 **Note**: Relative paths are resolved relative to the Word document's location.
 
 ## How It Works
 
-### 1. Document Analysis
+### 1. Placeholder Detection
 
-- **Scans Word document** for `[[INSERT: path]]` and `[[INSERT: path:pages]]` placeholders
-- **Page specification parsing** - Handles single pages, ranges, and complex combinations
-- **PDF validation** - Verifies that referenced PDF files exist and page selections are valid
+- **Table scanning** - Identifies `[[OVERLAY: ...]]` tags in single-cell tables
+- **Paragraph scanning** - Identifies `[[INSERT: ...]]` tags in standalone paragraphs  
+- **Path resolution** - Resolves relative paths relative to Word document location
+- **Page parsing** - Parses page selection syntax (e.g., `:1-3`, `,page=5`)
+- **PDF validation** - Validates that referenced PDF files exist and are readable
 - **Page counting** - Counts effective pages after applying page selection filters
-- **Layout detection** - Identifies table-based overlays vs paragraph-based merges
+- **Layout detection** - Identifies single-cell tables vs standalone paragraphs
 
 ### 2. Document Modification
 
 - **Table placeholders** - Replaces with visible red markers (`%%OVERLAY_START_N%%`)
 - **Cell replication** - Creates additional table cells for multi-page selections
-- **Paragraph placeholders** - Replaces with merge markers (`%%MERGE_START_N%%`)  
-- **Page break insertion** - Inserts proper page breaks for each selected page
+- **Paragraph placeholders** - Replaces with merge markers and page breaks (`%%MERGE_START_N%%`)  
+- **Marker placement** - Places markers first, then page breaks for correct timing
 - **Temporary document** - Saves modified document for PDF conversion
 
 ### 3. PDF Conversion
 
 - Converts modified Word document to PDF using Word automation
-- Preserves formatting and creates separate pages for overlays
+- Preserves formatting and creates base PDF with markers
 
-### 4. PDF Overlay
+### 4. PDF Processing
+
+#### Paragraph-based Merges (INSERT)
+
+- **Marker location** - Finds merge markers in the base PDF
+- **Marker removal** - Removes markers using redaction (white fill)
+- **Page insertion** - Inserts PDF pages immediately after marker position
+- **Content preservation** - Original document content remains intact
+
+#### Table-based Overlays (OVERLAY)
 
 - **Page selection** - Processes only the specified pages from source PDFs
 - **Annotation preservation** - Automatically bakes PDF annotations into content using `Document.bake()`
@@ -129,12 +156,12 @@ You can now specify which pages to include from the source PDF:
 
 ## Table-Based Overlay System
 
-The Report Compiler uses a simple but precise approach for PDF overlay placement with full support for multi-page PDFs and annotation preservation:
+The Report Compiler uses a precise approach for PDF overlay placement with full support for multi-page PDFs and annotation preservation:
 
 ### Single-Page PDF Overlay
 
-1. **Table Detection** - Identifies single-cell tables containing `[[INSERT: path.pdf]]` placeholders
-2. **Page Selection** - Parses page specifications like `:1-3` or `:5` if provided
+1. **Table Detection** - Identifies single-cell tables containing `[[OVERLAY: path.pdf]]` placeholders
+2. **Page Selection** - Parses page specifications like `,page=1-3` or `,page=5` if provided
 3. **Dimension Extraction** - Extracts exact table dimensions from Word document metadata  
 4. **Marker Placement** - Places a red marker at the top-left of the table cell
 5. **Rectangle Calculation** - Uses marker position + table dimensions = overlay area
@@ -154,9 +181,9 @@ For multi-page PDFs or page selections, the system automatically replicates tabl
 ### Page Selection Examples
 
 ```text
-[[INSERT: report.pdf:1-3]]     → 3 table cells with pages 1, 2, 3
-[[INSERT: report.pdf:2,5,7]]   → 3 table cells with pages 2, 5, 7  
-[[INSERT: report.pdf:3-]]      → Multiple cells with pages 3 to end
+[[OVERLAY: report.pdf, page=1-3]]     → 3 table cells with pages 1, 2, 3
+[[OVERLAY: report.pdf, page=2,5,7]]   → 3 table cells with pages 2, 5, 7  
+[[OVERLAY: report.pdf, page=3-]]      → Multiple cells with pages 3 to end
 ```
 
 ### Example Output
@@ -164,12 +191,12 @@ For multi-page PDFs or page selections, the system automatically replicates tabl
 ```text
 Single Table → Page Selection:
 ┌─────────────────┐
-│ PDF Page 2      │ ← Only page 2 (from [[INSERT: doc.pdf:2]])
+│ PDF Page 2      │ ← Only page 2 (from [[OVERLAY: doc.pdf, page=2]])
 └─────────────────┘
 
 Single Table → Multi-Page Selection:  
 ┌─────────────────┐
-│ PDF Page 1      │ ← From [[INSERT: doc.pdf:1,3,5]]
+│ PDF Page 1      │ ← From [[OVERLAY: doc.pdf, page=1,3,5]]
 ├─────────────────┤
 │ PDF Page 3      │ ← Replicated cell  
 ├─────────────────┤

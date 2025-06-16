@@ -3,8 +3,9 @@
 Python PDF Report Compiler using DOCX Modification and PDF Overlay
 
 This script automates the creation of a final PDF report by combining a main Word document 
-with multiple PDF appendices. It modifies the Word document to create blank placeholder pages,
-converts it to PDF, and then overlays the appendix content onto these blank pages.
+with multiple PDF appendices. It supports two types of placeholders:
+- Table-based overlays that overlay content onto existing pages
+- Paragraph-based merges that insert PDF pages after markers with page breaks
 """
 
 import os
@@ -21,15 +22,14 @@ import time
 class ReportCompiler:
     """
     A class to compile Word documents with PDF appendices into a single PDF report.
-    
-    The process involves:
+      The process involves:
     1. Finding PDF insertion placeholders in the Word document
-    2. Modifying the document to create blank pages with hidden markers
+    2. Modifying the document to create markers and page breaks as needed
     3. Converting the modified document to PDF
-    4. Overlaying the appendix PDFs onto the blank pages
+    4. Processing the PDF insertions (overlays and merges)
     
     Supported placeholder types:
-    - Table-based overlays: Single-cell tables containing [[INSERT: path.pdf]]
+    - Table-based overlays: Single-cell tables containing [[OVERLAY: path.pdf, page=5]]
     - Paragraph-based merges: Regular paragraphs containing [[INSERT: path.pdf]]
     """
     
@@ -52,10 +52,12 @@ class ReportCompiler:
         timestamp = str(int(time.time() * 1000))
         base_dir = os.path.dirname(self.input_docx_path)
         self.temp_docx_path = os.path.join(base_dir, f"~temp_modified_report_{timestamp}.docx")
-        self.temp_pdf_path = os.path.join(base_dir, f"~temp_base_{timestamp}.pdf")
-          # Compile regex for finding placeholders (now supports page specifications)
-        # Format: [[INSERT: path.pdf:1-3]] or [[INSERT: path.pdf:5]] or [[INSERT: path.pdf]]
-        self.placeholder_regex = re.compile(r"\[\[INSERT:\s*([^:\]]+?)(?::([^\]]+))?\s*\]\]")
+        self.temp_pdf_path = os.path.join(base_dir, f"~temp_base_{timestamp}.pdf")        # Compile regex patterns for finding placeholders
+        # OVERLAY format: [[OVERLAY: path.pdf, page=5]] or [[OVERLAY: path.pdf]]
+        # INSERT format: [[INSERT: path.pdf]] or [[INSERT: path.pdf:1-3]]
+        # Note: Handle Windows paths with drive letters like C:\path
+        self.overlay_regex = re.compile(r"\[\[OVERLAY:\s*([^,\]]+?)(?:,\s*page=([^\]]+))?\s*\]\]")
+        self.insert_regex = re.compile(r"\[\[INSERT:\s*(.+?)(?::([^:\\\/\]]+))?\s*\]\]")
         
         print(f"Input DOCX: {self.input_docx_path}")
         print(f"Output PDF: {self.final_pdf_path}")
@@ -159,8 +161,7 @@ class ReportCompiler:
                 return
             
             print(f"Found {len(placeholders)} PDF placeholder(s)")
-            
-            # Step 2: Save modified document and convert to PDF
+              # Step 2: Save modified document and convert to PDF
             print("\nStep 2: Saving modified document...")
             modified_doc.save(self.temp_docx_path)
             print(f"✓ Modified document saved: {self.temp_docx_path}")
@@ -168,18 +169,33 @@ class ReportCompiler:
             print("\nStep 3: Converting modified document to PDF...")
             self._convert_docx_to_pdf(self.temp_docx_path, self.temp_pdf_path)
             print(f"✓ Base PDF created: {self.temp_pdf_path}")
-              # Step 3: Overlay PDFs (only overlay placeholders)
-            print("\nStep 4: Overlaying appendix PDFs...")
+              # Step 4: Process PDF insertions by type
+            print("\nStep 4: Processing PDF insertions...")
             overlay_placeholders = [p for p in placeholders if p.get('type') == 'overlay']
+            merge_placeholders = [p for p in placeholders if p.get('type') == 'merge']
+            
+            # Process merges first (they modify page structure)
+            if merge_placeholders:
+                print(f"   • Processing {len(merge_placeholders)} paragraph-based merge(s)...")
+                self._insert_pdfs(merge_placeholders)
+                print(f"   ✓ Merge processing complete")
+            
+            # Process overlays second (they overlay on existing pages)
             if overlay_placeholders:
-                self._overlay_pdfs(overlay_placeholders)
-                print(f"✓ Final PDF created: {self.final_pdf_path}")
-            else:
-                print("   • No overlay placeholders to process")
-                # Copy base PDF to final PDF
+                print(f"   • Processing {len(overlay_placeholders)} table-based overlay(s)...")
+                # If merges were processed, work from the merged PDF, otherwise from base PDF
+                source_pdf = self.final_pdf_path if merge_placeholders else self.temp_pdf_path
+                self._overlay_pdfs(overlay_placeholders, source_pdf)
+                print(f"   ✓ Overlay processing complete")
+            
+            # If no processing occurred, copy base PDF to final
+            if not overlay_placeholders and not merge_placeholders:
+                print("   • No placeholders to process")
                 import shutil
                 shutil.copy2(self.temp_pdf_path, self.final_pdf_path)
-                print(f"✓ Final PDF copied: {self.final_pdf_path}")            
+                print(f"   ✓ Final PDF copied: {self.final_pdf_path}")
+            
+            print(f"\n✓ Final PDF created: {self.final_pdf_path}")
             print("\n=== Report Compilation Complete ===")
             
         finally:
@@ -253,17 +269,16 @@ class ReportCompiler:
                 # Only consider single-cell tables for overlay inserts
                 if rows == 1 and cols == 1:
                     cell = table.rows[0].cells[0]
-                    cell_text = cell.text.strip()
-                      # Check if this cell contains an INSERT placeholder
-                    match = self.placeholder_regex.search(cell_text)
+                    cell_text = cell.text.strip()                    # Check if this cell contains an OVERLAY placeholder
+                    match = self.overlay_regex.search(cell_text)
                     if match:
                         pdf_path_raw = match.group(1).strip()
                         page_spec = match.group(2)  # Page specification (could be None)
                         
-                        print(f"   📋 Found table placeholder #{len(placeholders)+1}:")
+                        print(f"   📋 Found table OVERLAY placeholder #{len(placeholders)+1}:")
                         print(f"      • Raw path: {pdf_path_raw}")
                         if page_spec:
-                            print(f"      • Page specification: {page_spec}")
+                            print(f"      • Page specification: page={page_spec}")
                         print(f"      • Table index: {table_idx}")
                         print(f"      • Table type: Single-cell (1x1)")
                         print(f"      • Cell text: '{cell_text}'")
@@ -291,20 +306,20 @@ class ReportCompiler:
                         
                         placeholders.append(table_info)
                 
-                else:
-                    # Multi-cell tables: scan all cells but don't classify as overlay
+                else:                    # Multi-cell tables: scan all cells but don't classify as overlay
                     # This prevents inline text within tables from being misclassified
                     has_insert = False
                     for row in table.rows:
                         for cell in row.cells:
-                            if self.placeholder_regex.search(cell.text):
+                            if (self.overlay_regex.search(cell.text) or 
+                                self.insert_regex.search(cell.text)):
                                 has_insert = True
                                 break
                         if has_insert:
                             break
                     
                     if has_insert:
-                        print(f"   ⚠️  Multi-cell table #{table_idx} ({rows}x{cols}) contains INSERT but skipped (not overlay type)")
+                        print(f"   ⚠️  Multi-cell table #{table_idx} ({rows}x{cols}) contains placeholder but skipped (not overlay type)")
         
         except Exception as e:
             print(f"   ❌ Error scanning for table placeholders: {e}")
@@ -406,19 +421,18 @@ class ReportCompiler:
     def _find_paragraph_placeholders(self):
         """
         Find PDF placeholders in regular document paragraphs (merge type).
-        
-        Returns:
+          Returns:
             list: List of dictionaries containing paragraph placeholder info
         """
         placeholders = []
         doc = Document(self.input_docx_path)
         for para_idx, paragraph in enumerate(doc.paragraphs):
-            match = self.placeholder_regex.search(paragraph.text)
+            match = self.insert_regex.search(paragraph.text)
             if match:
                 pdf_path_raw = match.group(1).strip()
                 page_spec = match.group(2)  # Page specification (could be None)
                 
-                print(f"   📄 Found paragraph placeholder #{len(placeholders)+1}:")
+                print(f"   📄 Found paragraph INSERT placeholder #{len(placeholders)+1}:")
                 print(f"      • Raw path: {pdf_path_raw}")
                 if page_spec:
                     print(f"      • Page specification: {page_spec}")
@@ -545,8 +559,7 @@ class ReportCompiler:
         if merge_placeholders:
             print(f"\n📄 Processing {len(merge_placeholders)} merge placeholders...")
             self._process_merge_placeholders(doc, merge_placeholders)
-        
-        # Process overlay placeholders (table-based)
+          # Process overlay placeholders (table-based)
         if overlay_placeholders:
             print(f"\n📦 Processing {len(overlay_placeholders)} overlay placeholders...")
             self._process_overlay_placeholders(doc, overlay_placeholders)
@@ -556,7 +569,7 @@ class ReportCompiler:
     
     def _process_merge_placeholders(self, doc, merge_placeholders):
         """
-        Process merge (paragraph-based) placeholders by replacing with page breaks.
+        Process merge (paragraph-based) placeholders by adding markers and page breaks.
         
         Args:
             doc (Document): The document to modify
@@ -573,23 +586,23 @@ class ReportCompiler:
             print(f"   📄 Processing merge placeholder #{placeholder['index']+1}:")
             print(f"      • Paragraph {para_idx}, {page_count} pages")
             print(f"      • Marker: {marker_text}")
-            
-            # Get the paragraph and clear it
+              # Get the paragraph and replace content with marker + page break
             paragraph = doc.paragraphs[para_idx]
             paragraph.clear()
             
-            # Add visible marker for the first page
+            # Add visible marker first
             marker_run = paragraph.add_run(marker_text)
             marker_run.font.size = Pt(12)
             marker_run.font.color.rgb = RGBColor(255, 0, 0)  # Red
-              # Add page breaks for each page in the PDF
-            for i in range(page_count):
-                if i > 0:  # Add page break before each page except the first
-                    run = paragraph.add_run()
-                    run.add_break(WD_BREAK.PAGE)
             
-            # Add the marker to the placeholder for overlay processing            placeholder['marker'] = marker_text            
-            print(f"      ✅ Added marker and {page_count} page breaks")
+            # Add page break after the marker to start PDF insertion on next page
+            page_break_run = paragraph.add_run()
+            page_break_run.add_break(WD_BREAK.PAGE)
+            
+            # Add the marker to the placeholder for processing
+            placeholder['marker'] = marker_text
+            
+            print(f"      ✅ Added marker and page break (no placeholder pages)")
     
     def _process_overlay_placeholders(self, doc, overlay_placeholders):
         """
@@ -797,8 +810,7 @@ class ReportCompiler:
             # Export to PDF with minimal, tested parameters
             doc.ExportAsFixedFormat(
                 OutputFileName=output_path,
-                ExportFormat=wdExportFormatPDF,
-                OpenAfterExport=False,
+                ExportFormat=wdExportFormatPDF,                OpenAfterExport=False,
                 OptimizeFor=wdExportOptimizeForPrint,
                 Item=wdExportItem,
                 CreateBookmarks=wdExportCreateHeadingBookmarks
@@ -823,17 +835,22 @@ class ReportCompiler:
                 if word and word.Documents.Count == 0:
                     word.Quit()
                     print("    ✓ Word application closed")
-            except:                pass
+            except:
+                pass
     
-    def _overlay_pdfs(self, placeholders):
+    def _overlay_pdfs(self, placeholders, source_pdf_path=None):
         """
         Overlay appendix PDFs onto the base PDF using simple marker positioning with table dimensions.
         
         Args:
             placeholders (list): List of placeholder dictionaries
+            source_pdf_path (str): Path to source PDF (defaults to temp_pdf_path)
         """
-        print(f"    Opening base PDF: {self.temp_pdf_path}")
-        base_pdf = fitz.open(self.temp_pdf_path)
+        if source_pdf_path is None:
+            source_pdf_path = self.temp_pdf_path
+            
+        print(f"    Opening base PDF: {source_pdf_path}")
+        base_pdf = fitz.open(source_pdf_path)
         
         try:
             for placeholder in placeholders:
@@ -917,12 +934,127 @@ class ReportCompiler:
                     print(f"      ✓ Appendix {index + 1} overlay complete")
                     
                 finally:
+                    appendix_pdf.close()            # Save the final PDF
+            print(f"    Saving final PDF: {self.final_pdf_path}")
+              # If we're overwriting the source file, save to temp first then replace
+            if source_pdf_path == self.final_pdf_path:
+                temp_output = f"{self.final_pdf_path}.tmp"
+                base_pdf.save(temp_output)
+                base_pdf.close()
+                
+                # Replace the original file
+                import shutil
+                shutil.move(temp_output, self.final_pdf_path)
+                print("    ✓ Final PDF saved successfully")
+                return  # Exit early since we already closed the PDF
+            else:
+                base_pdf.save(self.final_pdf_path)
+                print("    ✓ Final PDF saved successfully")
+                
+        finally:
+            if 'base_pdf' in locals() and not base_pdf.is_closed:
+                base_pdf.close()
+    def _insert_pdfs(self, merge_placeholders):
+        """
+        Insert PDFs at paragraph-based merge placeholders after marker positions.
+        
+        This method handles paragraph-based INSERT statements by:
+        1. Finding the marker positions in the base PDF
+        2. Removing the markers from the PDF
+        3. Inserting the appendix PDF pages after the marker positions
+        
+        Args:
+            merge_placeholders (list): List of paragraph-based placeholder dictionaries
+        """
+        print(f"    Opening base PDF for merge insertions: {self.temp_pdf_path}")
+        base_pdf = fitz.open(self.temp_pdf_path)
+        
+        try:
+            # Process placeholders in reverse order to avoid page index shifting
+            sorted_placeholders = sorted(merge_placeholders, key=lambda x: x.get('index', 0), reverse=True)
+            
+            for placeholder in sorted_placeholders:
+                pdf_path = placeholder['pdf_path']
+                marker = placeholder.get('marker', '')
+                index = placeholder.get('index', 0)
+                
+                print(f"    Processing merge appendix {index + 1}: {os.path.basename(pdf_path)}")
+                print(f"      🔍 Searching for marker: {marker}")
+                
+                # Find the marker position in the base PDF
+                marker_info = self._find_marker_position(base_pdf, marker)
+                
+                if not marker_info:
+                    print(f"      ❌ Marker not found in PDF, skipping appendix")
+                    continue
+                
+                start_page_index = marker_info['page_index']
+                
+                print(f"      ✓ Found marker on page {start_page_index + 1}")
+                
+                # Remove the marker from the PDF page
+                print(f"      🧹 Removing marker from page {start_page_index + 1}")
+                marker_page = base_pdf[start_page_index]
+                text_instances = marker_page.search_for(marker)
+                if text_instances:
+                    for inst in text_instances:
+                        # Create a white rectangle to cover the marker text
+                        marker_page.add_redact_annot(inst, fill=(1, 1, 1))  # White fill
+                    marker_page.apply_redactions()
+                    print(f"      ✓ Marker removed from page {start_page_index + 1}")
+                
+                print(f"      📄 Will insert {len(pages_to_insert) if 'pages_to_insert' in locals() else 'PDF'} page(s) after page {start_page_index + 1}")
+                
+                # Open the appendix PDF
+                print(f"      Opening appendix PDF: {pdf_path}")
+                appendix_pdf = fitz.open(pdf_path)
+                
+                try:
+                    # Bake annotations into the PDF content to preserve them
+                    print(f"      🔥 Baking annotations into PDF content...")
+                    
+                    # Check for annotations before baking
+                    total_annotations = 0
+                    for page_num in range(appendix_pdf.page_count):
+                        page = appendix_pdf[page_num]
+                        annots = list(page.annots())
+                        total_annotations += len(annots)
+                    
+                    if total_annotations > 0:
+                        print(f"        📝 Found {total_annotations} annotation(s), baking into content...")
+                        appendix_pdf.bake(annots=True)
+                        print(f"        ✓ Annotations baked into PDF content")
+                    else:
+                        print(f"        📝 No annotations found in PDF")
+                    
+                    # Determine which pages to insert
+                    selected_pages = placeholder.get('selected_pages')
+                    if selected_pages is not None:
+                        # Use specified pages
+                        pages_to_insert = selected_pages
+                        print(f"        📄 Using selected pages: {[p+1 for p in pages_to_insert]}")
+                    else:
+                        # Use all pages
+                        pages_to_insert = list(range(appendix_pdf.page_count))
+                        print(f"        📄 Using all {appendix_pdf.page_count} pages")
+                    
+                    # Insert the appendix pages after the marker page (no page removal)
+                    insert_start_position = start_page_index + 1  # Insert after the marker page
+                    print(f"        📥 Inserting {len(pages_to_insert)} appendix page(s) starting at position {insert_start_position + 1}")
+                    for i, source_page_index in enumerate(pages_to_insert):
+                        insert_position = insert_start_position + i
+                        print(f"          • Inserting source page {source_page_index + 1} at position {insert_position + 1}")
+                        base_pdf.insert_pdf(appendix_pdf, from_page=source_page_index, to_page=source_page_index, start_at=insert_position)
+                    
+                    print(f"      ✓ Merge appendix {index + 1} insertion complete")
+                    
+                finally:
                     appendix_pdf.close()
             
-            # Save the final PDF
-            print(f"    Saving final PDF: {self.final_pdf_path}")
+            # Save the final PDF (or intermediate PDF if overlays will follow)
+            print(f"    Saving PDF with merges: {self.final_pdf_path}")
             base_pdf.save(self.final_pdf_path)
-            print("    ✓ Final PDF saved successfully")
+            print("    ✓ PDF with merges saved successfully")
             
         finally:
             base_pdf.close()
@@ -1122,15 +1254,19 @@ def main():
     """
     parser = argparse.ArgumentParser(
         description="Python PDF Report Compiler - Combine Word documents with PDF appendices",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        formatter_class=argparse.RawDescriptionHelpFormatter,        epilog="""
 Examples:
   python report_compiler.py report.docx final_report.pdf
   python report_compiler.py "C:\\Reports\\my_report.docx" "C:\\Output\\final.pdf"
 
-Placeholder format in Word document:
-  [[INSERT: appendices/calculations.pdf]]
-  [[INSERT: C:\\Shared\\analysis.pdf]]        """
+Placeholder formats in Word document:
+  Table-based overlays (in single-cell tables):
+    [[OVERLAY: appendices/sketch.pdf, page=1]]
+    [[OVERLAY: C:\\Shared\\calculation.pdf]]
+  
+  Paragraph-based merges (in standalone paragraphs):
+    [[INSERT: appendices/full_report.pdf]]
+    [[INSERT: C:\\Shared\\analysis.pdf:1-5]]        """
     )
     
     parser.add_argument(
