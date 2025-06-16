@@ -626,8 +626,7 @@ class ReportCompiler:
         Args:
             doc (Document): The document to modify
             table_placeholders (list): List of table placeholders
-        """
-        # Sort by table index in reverse order to avoid index shifting issues
+        """        # Sort by table index in reverse order to avoid index shifting issues
         sorted_placeholders = sorted(table_placeholders, key=lambda x: x['table_index'], reverse=True)
         
         for placeholder in sorted_placeholders:
@@ -637,7 +636,8 @@ class ReportCompiler:
             print(f"      • Processing table placeholder #{placeholder['index']+1}:")
             print(f"         • Table {table_idx}, {page_count} pages")
             
-            try:                # Get the table and extract its dimensions
+            try:
+                # Get the table and extract its dimensions
                 table = doc.tables[table_idx]
                 cell = table.rows[0].cells[0]
                 
@@ -645,9 +645,9 @@ class ReportCompiler:
                 stored_coords = self.table_coordinates.get(table_idx, {})
                 stored_dims = stored_coords.get('dimensions', {})
                 
-                if stored_dims and 'width_inches' in stored_dims and 'row_height_inches' in stored_dims:
+                if stored_dims and 'column_width_inches' in stored_dims and 'row_height_inches' in stored_dims:
                     # Use the stored dimensions from Word XML analysis
-                    table_width_in = stored_dims['width_inches']
+                    table_width_in = stored_dims['column_width_inches']
                     table_height_in = stored_dims['row_height_inches']
                     table_width_pts = table_width_in * 72  # Convert inches to points
                     table_height_pts = table_height_in * 72
