@@ -14,6 +14,7 @@ The Report Compiler automates the creation of comprehensive PDF reports by:
 ## Features
 
 - ✅ **Relative path support** - PDF paths resolved relative to the input Word document
+- ✅ **Page selection support** - Specify which pages to include from source PDFs using flexible syntax
 - ✅ **Multi-page PDF support** - Automatic cell replication for multi-page table overlays
 - ✅ **Annotation preservation** - PDF annotations automatically baked into content during overlay
 - ✅ **Robust page breaks** - Proper page breaks using `WD_BREAK.PAGE`
@@ -61,6 +62,28 @@ In your Word document, use the following format to insert PDF appendices:
 [[INSERT: C:\Shared\external_report.pdf]]
 ```
 
+### Page Selection (New!)
+
+You can now specify which pages to include from the source PDF:
+
+```text
+[[INSERT: appendices/report.pdf:1-3]]      # Pages 1, 2, and 3
+[[INSERT: appendices/report.pdf:5]]        # Page 5 only
+[[INSERT: appendices/report.pdf:1,3,5]]    # Pages 1, 3, and 5
+[[INSERT: appendices/report.pdf:2-]]       # Pages 2 to end
+[[INSERT: appendices/report.pdf:1-3,7,9-]] # Mixed: pages 1-3, 7, and 9 to end
+```
+
+**Page Selection Formats:**
+
+- `5` - Single page (page 5)
+- `1-3` - Range of pages (pages 1, 2, 3)
+- `2-` - Open-ended range (pages 2 to end of document)
+- `1,3,5` - Specific pages (pages 1, 3, and 5)
+- `1-3,7,9-12` - Combined specifications
+
+**Note:** Page numbers are 1-indexed (first page = 1). Invalid page numbers are automatically filtered out.
+
 **Supported Formats:**
 
 - **Table-based overlays**: Single-cell tables containing `[[INSERT: path.pdf]]` for precise placement
@@ -74,17 +97,19 @@ In your Word document, use the following format to insert PDF appendices:
 
 ### 1. Document Analysis
 
-- Scans Word document for `[[INSERT: path]]` placeholders
-- Validates that referenced PDF files exist
-- Counts pages in each appendix PDF
-- Identifies table-based overlays vs paragraph-based merges
+- **Scans Word document** for `[[INSERT: path]]` and `[[INSERT: path:pages]]` placeholders
+- **Page specification parsing** - Handles single pages, ranges, and complex combinations
+- **PDF validation** - Verifies that referenced PDF files exist and page selections are valid
+- **Page counting** - Counts effective pages after applying page selection filters
+- **Layout detection** - Identifies table-based overlays vs paragraph-based merges
 
 ### 2. Document Modification
 
-- Replaces table placeholders with visible red markers (`%%OVERLAY_START_N%%`)
-- Replaces paragraph placeholders with merge markers (`%%MERGE_START_N%%`)
-- Inserts proper page breaks for each page in the appendix
-- Saves modified document as temporary DOCX
+- **Table placeholders** - Replaces with visible red markers (`%%OVERLAY_START_N%%`)
+- **Cell replication** - Creates additional table cells for multi-page selections
+- **Paragraph placeholders** - Replaces with merge markers (`%%MERGE_START_N%%`)  
+- **Page break insertion** - Inserts proper page breaks for each selected page
+- **Temporary document** - Saves modified document for PDF conversion
 
 ### 3. PDF Conversion
 
@@ -93,13 +118,14 @@ In your Word document, use the following format to insert PDF appendices:
 
 ### 4. PDF Overlay
 
-- **Annotation Preservation** - Automatically bakes PDF annotations into content using `Document.bake()`
-- **Multi-page Support** - Creates additional table cells for multi-page PDFs
-- **Precise Positioning** - Searches for overlay markers in the base PDF
-- **Rectangle Calculation** - Uses the marker position as the top-left corner of the overlay area
-- **Marker Removal** - Removes markers using redaction (white fill)
-- **Sequential Overlay** - Overlays each appendix page onto calculated rectangles
-- **Final Assembly** - Saves completed PDF with all appendices integrated
+- **Page selection** - Processes only the specified pages from source PDFs
+- **Annotation preservation** - Automatically bakes PDF annotations into content using `Document.bake()`
+- **Multi-page support** - Creates additional table cells for multi-page selections
+- **Precise positioning** - Searches for overlay markers in the base PDF
+- **Rectangle calculation** - Uses the marker position as the top-left corner of the overlay area
+- **Marker removal** - Removes markers using redaction (white fill)
+- **Sequential overlay** - Overlays each selected page onto calculated rectangles
+- **Final assembly** - Saves completed PDF with all appendices integrated
 
 ## Table-Based Overlay System
 
@@ -108,32 +134,46 @@ The Report Compiler uses a simple but precise approach for PDF overlay placement
 ### Single-Page PDF Overlay
 
 1. **Table Detection** - Identifies single-cell tables containing `[[INSERT: path.pdf]]` placeholders
-2. **Dimension Extraction** - Extracts exact table dimensions from Word document metadata  
-3. **Marker Placement** - Places a red marker at the top-left of the table cell
-4. **Rectangle Calculation** - Uses marker position + table dimensions = overlay area
-5. **Annotation Preservation** - Bakes PDF annotations into content before overlay
-6. **Precise Overlay** - Places PDF content exactly within the calculated rectangle
+2. **Page Selection** - Parses page specifications like `:1-3` or `:5` if provided
+3. **Dimension Extraction** - Extracts exact table dimensions from Word document metadata  
+4. **Marker Placement** - Places a red marker at the top-left of the table cell
+5. **Rectangle Calculation** - Uses marker position + table dimensions = overlay area
+6. **Annotation Preservation** - Bakes PDF annotations into content before overlay
+7. **Precise Overlay** - Places selected PDF pages exactly within the calculated rectangle
 
 ### Multi-Page PDF Overlay
 
-For multi-page PDFs, the system automatically replicates table cells:
+For multi-page PDFs or page selections, the system automatically replicates table cells:
 
-1. **Page Detection** - Identifies PDFs with multiple pages
-2. **Cell Replication** - Adds consecutive table rows for each additional page
+1. **Page Detection** - Identifies PDFs with multiple pages or page selections
+2. **Cell Replication** - Adds consecutive table rows for each selected page
 3. **Marker Generation** - Creates unique markers for each cell (`%%OVERLAY_START_00_PAGE_02%%`)
-4. **Sequential Overlay** - Overlays pages into consecutive table cells
-5. **Unified Layout** - All PDF pages appear together in the same table area
+4. **Sequential Overlay** - Overlays selected pages into consecutive table cells
+5. **Unified Layout** - All selected PDF pages appear together in the same table area
+
+### Page Selection Examples
+
+```text
+[[INSERT: report.pdf:1-3]]     → 3 table cells with pages 1, 2, 3
+[[INSERT: report.pdf:2,5,7]]   → 3 table cells with pages 2, 5, 7  
+[[INSERT: report.pdf:3-]]      → Multiple cells with pages 3 to end
+```
 
 ### Example Output
 
 ```text
-Single Table → Multi-Page PDF:
+Single Table → Page Selection:
 ┌─────────────────┐
-│ PDF Page 1      │ ← Original table cell
+│ PDF Page 2      │ ← Only page 2 (from [[INSERT: doc.pdf:2]])
+└─────────────────┘
+
+Single Table → Multi-Page Selection:  
+┌─────────────────┐
+│ PDF Page 1      │ ← From [[INSERT: doc.pdf:1,3,5]]
 ├─────────────────┤
-│ PDF Page 2      │ ← Replicated cell  
+│ PDF Page 3      │ ← Replicated cell  
 ├─────────────────┤
-│ PDF Page 3      │ ← Replicated cell
+│ PDF Page 5      │ ← Replicated cell
 └─────────────────┘
 ```
 
@@ -150,26 +190,28 @@ Single Table → Multi-Page PDF:
 ### Key Benefits
 
 - **Simple & Reliable** - Single marker approach with cell replication
+- **Flexible Page Selection** - Extract exactly the pages you need from large PDFs
 - **Multi-page Support** - Automatic handling of PDFs with any number of pages
 - **Annotation Preservation** - PDF annotations automatically preserved during overlay
 - **Accurate** - Uses Word's own measurements
-- **Easy to Debug** - Clear inch measurements and detailed logging
+- **Easy to Debug** - Clear inch measurements and detailed logging with page selection info
 - **Consistent** - Predictable placement and unified layout
 
 ## Example Workflow
 
 ```text
-Input: bridge_report.docx containing [[INSERT: appendices/multi_page_analysis.pdf]]
+Input: bridge_report.docx containing [[INSERT: appendices/analysis.pdf:2-4,7]]
 ↓
-Step 1: Find placeholder and validate multi_page_analysis.pdf (3 pages)
+Step 1: Find placeholder and validate analysis.pdf (10 pages)
+       Parse page spec "2-4,7" → pages 2, 3, 4, 7 (4 pages selected)
 ↓
-Step 2: Replace placeholder with marker + replicate table cells for pages 2-3
+Step 2: Replace placeholder with marker + replicate table cells for 4 pages
 ↓
-Step 3: Convert modified DOCX to PDF (creates base PDF with 3 table cells)
+Step 3: Convert modified DOCX to PDF (creates base PDF with 4 table cells)
 ↓
-Step 4: Bake annotations into source PDF, find markers, overlay 3 pages sequentially
+Step 4: Bake annotations, find markers, overlay pages 2,3,4,7 sequentially
 ↓
-Output: bridge_report.pdf with integrated multi-page appendix in consecutive cells
+Output: bridge_report.pdf with selected pages integrated in consecutive cells
 ```
 
 ## Requirements
