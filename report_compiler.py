@@ -560,11 +560,18 @@ class ReportCompiler:
                 run = paragraph.add_run(marker)
                 run.font.color.rgb = RGBColor(255, 0, 0)  # Red color for visibility
                 run.font.size = Pt(10)
-                
-                # Store table dimensions and marker in the placeholder for overlay processing
+                  # Store table dimensions and marker in the placeholder for overlay processing
                 placeholder['marker'] = marker
                 placeholder['table_width_pts'] = table_width_pts
                 placeholder['table_height_pts'] = table_height_pts
+                  # Handle multi-page PDFs by replicating cells instead of tables
+                if page_count > 1:
+                    print(f"         📋 Multi-page PDF detected ({page_count} pages), replicating cells...")
+                    additional_markers = self._replicate_cells_for_multipage(
+                        doc, table, placeholder, page_count - 1
+                    )
+                    placeholder['additional_markers'] = additional_markers
+                    print(f"         ✅ Created {len(additional_markers)} additional cells")
                 
                 print(f"         ✅ Table {table_idx} updated with overlay marker and dimensions")
                 
@@ -575,9 +582,63 @@ class ReportCompiler:
                 marker_text = f"%%OVERLAY_START_{placeholder['index']}%%"
                 cell.text = marker_text
                 placeholder['marker'] = marker_text
-  
-  
-    
+    def _replicate_cells_for_multipage(self, doc, table, placeholder, additional_pages):
+        """
+        Replicate table cells for multi-page PDF overlays by adding rows to the existing table.
+        
+        Args:
+            doc (Document): The document to modify
+            table: The table to add cells to
+            placeholder (dict): The placeholder information
+            additional_pages (int): Number of additional pages to create cells for
+            
+        Returns:
+            list: List of markers for the additional cells
+        """
+        additional_markers = []
+        
+        try:
+            # Add additional rows to the existing table
+            for page_num in range(additional_pages):
+                # Add a new row to the table
+                new_row = table.add_row()
+                cell = new_row.cells[0]
+                
+                # Set the row height to match the original row
+                try:
+                    if table.rows[0].height:
+                        new_row.height = table.rows[0].height
+                except:
+                    pass  # Height setting might fail, continue without it
+                
+                # Configure the cell
+                cell.text = ""
+                paragraph = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+                
+                # Set paragraph alignment to left (top-left justification)
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                
+                # Create unique marker for this additional cell
+                marker = f"%%OVERLAY_START_{placeholder['index']:02d}_PAGE_{page_num + 2:02d}%%"
+                run = paragraph.add_run(marker)
+                run.font.color.rgb = RGBColor(255, 0, 0)  # Red color for visibility
+                run.font.size = Pt(10)
+                
+                additional_markers.append({
+                    'marker': marker,
+                    'page_number': page_num + 2,  # Page 2, 3, 4, etc.
+                    'table_width_pts': placeholder['table_width_pts'],
+                    'table_height_pts': placeholder['table_height_pts']
+                })
+                
+                print(f"           ✅ Created table row {page_num + 2} with marker: {marker}")
+                
+        except Exception as e:
+            print(f"           ❌ Error during cell replication: {e}")
+        
+        return additional_markers
+
     def _convert_docx_to_pdf(self, input_path, output_path):
         """
         Convert a DOCX file to PDF using Microsoft Word automation.
@@ -697,31 +758,36 @@ class ReportCompiler:
                         print(f"        ✓ Annotations baked into PDF content")
                     else:
                         print(f"        📝 No annotations found in PDF")
-                    
-                    # Overlay each page of the appendix
+                      # Overlay each page of the appendix
                     for i in range(page_count):
-                        target_page_index = start_page_index + i
-                        
-                        if target_page_index >= base_pdf.page_count:
-                            print(f"      ⚠ WARNING: Not enough pages in base PDF for appendix page {i + 1}")
-                            break
-                        
-                        print(f"        Overlaying page {i + 1}/{page_count} -> base page {target_page_index + 1}")
-                        
-                        # Get the target page in the base PDF
-                        target_page = base_pdf[target_page_index]
-                        
-                        # For the first page, use calculated overlay rectangle
-                        # For subsequent pages, use full page overlay
                         if i == 0:
-                            # Precise overlay within table boundaries
+                            # First page: use the original marker and overlay rectangle
+                            print(f"        Overlaying page {i + 1}/{page_count} -> base page {start_page_index + 1}")
+                            target_page = base_pdf[start_page_index]
                             print(f"        📌 Precise overlay within detected cell boundaries")
                             target_page.show_pdf_page(overlay_rect, appendix_pdf, i)
                         else:
-                            # Full page overlay for additional pages
-                            print(f"        📄 Full page overlay for continuation")
-                            page_rect = target_page.rect
-                            target_page.show_pdf_page(page_rect, appendix_pdf, i)
+                            # Additional pages: find the replicated table markers
+                            additional_markers = placeholder.get('additional_markers', [])
+                            if i - 1 < len(additional_markers):
+                                marker_info = additional_markers[i - 1]
+                                marker = marker_info['marker']
+                                
+                                print(f"        Overlaying page {i + 1}/{page_count} -> searching for marker {marker}")
+                                
+                                # Find the marker for this additional page
+                                additional_overlay_rect, additional_page_index = self._find_marker_and_calculate_rect_from_table_with_marker(
+                                    base_pdf, marker, marker_info['table_width_pts'], marker_info['table_height_pts']
+                                )
+                                
+                                if additional_overlay_rect:
+                                    target_page = base_pdf[additional_page_index]
+                                    print(f"        📌 Precise overlay in replicated table on page {additional_page_index + 1}")
+                                    target_page.show_pdf_page(additional_overlay_rect, appendix_pdf, i)
+                                else:
+                                    print(f"        ❌ Could not find marker for page {i + 1}, skipping")
+                            else:
+                                print(f"        ❌ No replicated table found for page {i + 1}, skipping")
                     
                     print(f"      ✓ Appendix {index + 1} overlay complete")
                     
@@ -829,6 +895,72 @@ class ReportCompiler:
         
         return None
     
+    def _find_marker_and_calculate_rect_from_table_with_marker(self, pdf_doc, marker, table_width_pts, table_height_pts):
+        """
+        Find a specific marker and calculate overlay rectangle using provided table dimensions.
+        
+        Args:
+            pdf_doc: The PDF document to search
+            marker (str): The marker text to find
+            table_width_pts (float): Table width in points
+            table_height_pts (float): Table height in points
+            
+        Returns:
+            tuple: (overlay_rect, page_index) or (None, None) if not found
+        """
+        print(f"      🔍 Searching for marker: {marker}")
+        
+        # Search for the marker in the PDF
+        marker_info = self._find_marker_position(pdf_doc, marker)
+        
+        if not marker_info:
+            print(f"      ❌ Marker not found in PDF")
+            return None, None
+        
+        start_page_index = marker_info['page_index']
+        marker_rect = marker_info['rect']
+        
+        # Convert points to inches for easier reading
+        marker_x_in = marker_rect.x0 / 72
+        marker_y_in = marker_rect.y0 / 72
+        marker_width_in = marker_rect.width / 72
+        marker_height_in = marker_rect.height / 72
+        
+        print(f"      📍 Marker found at: ({marker_rect.x0:.1f}, {marker_rect.y0:.1f}) points = ({marker_x_in:.2f}, {marker_y_in:.2f}) inches")
+        print(f"      📍 Marker size: {marker_rect.width:.1f} x {marker_rect.height:.1f} points = {marker_width_in:.2f} x {marker_height_in:.2f} inches")
+        
+        table_width_in = table_width_pts / 72
+        table_height_in = table_height_pts / 72
+        
+        print(f"      📏 Table dimensions: {table_width_pts:.1f} x {table_height_pts:.1f} points = {table_width_in:.2f} x {table_height_in:.2f} inches")
+        
+        # Calculate overlay rectangle using marker position as top-left corner
+        overlay_rect = fitz.Rect(
+            marker_rect.x0,                           # left (marker x position)
+            marker_rect.y0,                           # top (marker y position)  
+            marker_rect.x0 + table_width_pts,         # right (left + table width)
+            marker_rect.y0 + table_height_pts         # bottom (top + table height)
+        )
+        
+        # Convert overlay rectangle to inches for easier reading
+        overlay_x_in = overlay_rect.x0 / 72
+        overlay_y_in = overlay_rect.y0 / 72
+        overlay_width_in = overlay_rect.width / 72
+        overlay_height_in = overlay_rect.height / 72
+        
+        print(f"      📐 Calculated overlay rectangle:")
+        print(f"         • Points: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
+        print(f"         • Inches: ({overlay_x_in:.2f}, {overlay_y_in:.2f}) to ({overlay_x_in + overlay_width_in:.2f}, {overlay_y_in + overlay_height_in:.2f})")
+        print(f"         • Size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points = {overlay_width_in:.2f} x {overlay_height_in:.2f} inches")
+        
+        # Remove the marker text from the page
+        page = pdf_doc[start_page_index]
+        page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill
+        page.apply_redactions()
+        print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        
+        return overlay_rect, start_page_index
+
     def _cleanup(self):
         """
         Clean up temporary files created during the process.
