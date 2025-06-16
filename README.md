@@ -60,7 +60,16 @@ For inserting PDFs as overlays onto existing pages, preserving the main document
 [[OVERLAY: appendices/sketch.pdf]]
 [[OVERLAY: calculations/diagram.pdf, page=2]]
 [[OVERLAY: C:\Shared\drawing.pdf, page=1-3]]
+[[OVERLAY: diagrams/full_page.pdf, crop=false]]
+[[OVERLAY: sketches/detail.pdf, page=2, crop=false]]
 ```
+
+**OVERLAY Parameters:**
+
+- `page=` - Page selection (same format as INSERT)
+- `crop=` - Content cropping control:
+  - `crop=true` (default): Automatically crops to content bounding box, removing excess whitespace
+  - `crop=false`: Uses the full page dimensions without cropping
 
 ### Paragraph-based Merges (INSERT tags)
 
