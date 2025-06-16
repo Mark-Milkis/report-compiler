@@ -676,13 +676,28 @@ class ReportCompiler:
                 
                 print(f"      ✓ Found positioning markers on page {start_page_index + 1}")
                 print(f"      📋 Overlay rectangle: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
-                print(f"      📏 Overlay size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points")
-
-                # Open the appendix PDF
+                print(f"      📏 Overlay size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points")                # Open the appendix PDF
                 print(f"      Opening appendix PDF: {pdf_path}")
                 appendix_pdf = fitz.open(pdf_path)
                 
                 try:
+                    # Bake annotations into the PDF content to preserve them during overlay
+                    print(f"      🔥 Baking annotations into PDF content...")
+                    
+                    # Check for annotations before baking
+                    total_annotations = 0
+                    for page_num in range(appendix_pdf.page_count):
+                        page = appendix_pdf[page_num]
+                        annots = list(page.annots())
+                        total_annotations += len(annots)
+                    
+                    if total_annotations > 0:
+                        print(f"        📝 Found {total_annotations} annotation(s), baking into content...")
+                        appendix_pdf.bake(annots=True)
+                        print(f"        ✓ Annotations baked into PDF content")
+                    else:
+                        print(f"        📝 No annotations found in PDF")
+                    
                     # Overlay each page of the appendix
                     for i in range(page_count):
                         target_page_index = start_page_index + i
