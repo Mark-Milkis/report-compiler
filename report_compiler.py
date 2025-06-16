@@ -487,14 +487,13 @@ class ReportCompiler:
         print("   � Table-based overlay placeholder processing:")
         
         if not overlay_placeholders:
-            return
-        
+            return        
         # All overlay placeholders should be table-based now
         self._process_table_placeholders(doc, overlay_placeholders)
     
     def _process_table_placeholders(self, doc, table_placeholders):
         """
-        Process table-based overlay placeholders by replacing table content with markers.
+        Process table-based overlay placeholders by replacing table content with a simple marker.
         
         Args:
             doc (Document): The document to modify
@@ -506,39 +505,78 @@ class ReportCompiler:
         for placeholder in sorted_placeholders:
             table_idx = placeholder['table_index']
             page_count = placeholder['page_count']
-            marker_text = f"%%OVERLAY_START_{placeholder['index']}%%"
             
-            print(f"      � Processing table placeholder #{placeholder['index']+1}:")
+            print(f"      • Processing table placeholder #{placeholder['index']+1}:")
             print(f"         • Table {table_idx}, {page_count} pages")
-            print(f"         • Marker: {marker_text}")
             
-            try:
-                # Get the table and modify its content
+            try:                # Get the table and extract its dimensions
                 table = doc.tables[table_idx]
                 cell = table.rows[0].cells[0]
-                  # Clear the cell and add our marker
-                cell.text = marker_text
                 
-                # Add the marker to the placeholder for overlay processing
-                placeholder['marker'] = marker_text
+                # Use stored table dimensions if available, otherwise calculate
+                stored_coords = self.table_coordinates.get(table_idx, {})
+                stored_dims = stored_coords.get('dimensions', {})
                 
-                # Optional: style the marker text
-                if cell.paragraphs:
-                    for paragraph in cell.paragraphs:
-                        if paragraph.runs:
-                            for run in paragraph.runs:
-                                run.font.size = Pt(12)
-                                # Make marker less visible
-                                run.font.color.rgb = None  # Default color
+                if stored_dims and 'width_inches' in stored_dims and 'row_height_inches' in stored_dims:
+                    # Use the stored dimensions from Word XML analysis
+                    table_width_in = stored_dims['width_inches']
+                    table_height_in = stored_dims['row_height_inches']
+                    table_width_pts = table_width_in * 72  # Convert inches to points
+                    table_height_pts = table_height_in * 72
+                    print(f"         • Using stored table dimensions: {table_width_in:.2f} x {table_height_in:.2f} inches")
+                else:
+                    # Fallback: Extract table dimensions from docx properties
+                    table_width_twips = table.columns[0].width
+                    table_height_twips = sum(row.height for row in table.rows if row.height)
+                    
+                    # Convert to points (1 inch = 72 points, 1440 twips = 1 inch, so 20 twips = 1 point)
+                    table_width_pts = table_width_twips / 20 if table_width_twips else 400  # Default width
+                    table_height_pts = table_height_twips / 20 if table_height_twips else 200  # Default height
+                    
+                    # Apply reasonable limits (tables shouldn't be huge)
+                    table_width_pts = min(table_width_pts, 600)  # Max ~8.3 inches
+                    table_height_pts = min(table_height_pts, 800)  # Max ~11 inches
+                    
+                    # Ensure minimum size
+                    table_width_pts = max(table_width_pts, 100)   # Min ~1.4 inches
+                    table_height_pts = max(table_height_pts, 50)  # Min ~0.7 inches
+                    
+                    table_width_in = table_width_pts / 72
+                    table_height_in = table_height_pts / 72
+                    print(f"         • Calculated table dimensions: {table_width_in:.2f} x {table_height_in:.2f} inches")
                 
-                print(f"         ✅ Table {table_idx} updated with overlay marker")
+                print(f"         • Final table dimensions: {table_width_pts:.1f} x {table_height_pts:.1f} points = {table_width_in:.2f} x {table_height_in:.2f} inches")
+                
+                # Clear the cell and add a simple top-left aligned marker
+                cell.text = ""
+                paragraph = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+                
+                # Set paragraph alignment to left (top-left justification)
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                
+                # Create the overlay marker
+                marker = f"%%OVERLAY_START_{placeholder['index']:02d}%%"
+                run = paragraph.add_run(marker)
+                run.font.color.rgb = RGBColor(255, 0, 0)  # Red color for visibility
+                run.font.size = Pt(10)
+                
+                # Store table dimensions and marker in the placeholder for overlay processing
+                placeholder['marker'] = marker
+                placeholder['table_width_pts'] = table_width_pts
+                placeholder['table_height_pts'] = table_height_pts
+                
+                print(f"         ✅ Table {table_idx} updated with overlay marker and dimensions")
                 
             except Exception as e:
                 print(f"         ❌ Error modifying table {table_idx}: {e}")
-                print(f"         📝 Falling back to paragraph marker...")                # Fallback: add paragraph marker
-                paragraph = doc.add_paragraph()
-                marker_run = paragraph.add_run(marker_text)
-                marker_run.font.size = Pt(12)
+                print(f"         📝 Falling back to simple marker...")
+                # Fallback: add simple marker
+                marker_text = f"%%OVERLAY_START_{placeholder['index']}%%"
+                cell.text = marker_text
+                placeholder['marker'] = marker_text
+  
+  
     
     def _convert_docx_to_pdf(self, input_path, output_path):
         """
@@ -609,12 +647,11 @@ class ReportCompiler:
                 if word and word.Documents.Count == 0:
                     word.Quit()
                     print("    ✓ Word application closed")
-            except:
-                pass
+            except:                pass
     
     def _overlay_pdfs(self, placeholders):
         """
-        Overlay appendix PDFs onto the base PDF using precise table positioning.
+        Overlay appendix PDFs onto the base PDF using simple marker positioning with table dimensions.
         
         Args:
             placeholders (list): List of placeholder dictionaries
@@ -624,38 +661,22 @@ class ReportCompiler:
         
         try:
             for placeholder in placeholders:
-                marker = placeholder['marker']
                 pdf_path = placeholder['pdf_path']
                 page_count = placeholder['page_count']
                 index = placeholder['index']
                 
                 print(f"    Processing appendix {index + 1}: {os.path.basename(pdf_path)}")
-                print(f"      Searching for marker: {marker}")
                 
-                # Search for the marker in the PDF and get its position
-                marker_info = self._find_marker_position(base_pdf, marker)
+                # Use the simplified approach with table dimensions
+                overlay_rect, start_page_index = self._find_marker_and_calculate_rect_from_table(base_pdf, placeholder)
                 
-                if not marker_info:
-                    print(f"      ⚠ WARNING: Marker not found in PDF, skipping appendix")
+                if not overlay_rect:
+                    print(f"      ⚠ WARNING: No markers found in PDF, skipping appendix")
                     continue
                 
-                start_page_index = marker_info['page_index']
-                marker_rect = marker_info['rect']
-                
-                print(f"      ✓ Found marker on page {start_page_index + 1}")
-                print(f"      📐 Marker position: ({marker_rect.x0:.1f}, {marker_rect.y0:.1f}) to ({marker_rect.x1:.1f}, {marker_rect.y1:.1f})")
-                
-                # Calculate overlay rectangle based on table dimensions
-                overlay_rect = self._calculate_overlay_rectangle(placeholder, marker_rect, base_pdf[start_page_index])
-                
+                print(f"      ✓ Found positioning markers on page {start_page_index + 1}")
                 print(f"      📋 Overlay rectangle: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
                 print(f"      📏 Overlay size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points")
-                
-                # Remove the marker text from the page
-                page = base_pdf[start_page_index]
-                page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill
-                page.apply_redactions()
-                print(f"      ✓ Removed marker text from page {start_page_index + 1}")
 
                 # Open the appendix PDF
                 print(f"      Opening appendix PDF: {pdf_path}")
@@ -679,7 +700,7 @@ class ReportCompiler:
                         # For subsequent pages, use full page overlay
                         if i == 0:
                             # Precise overlay within table boundaries
-                            print(f"        📌 Precise overlay within table boundaries")
+                            print(f"        📌 Precise overlay within detected cell boundaries")
                             target_page.show_pdf_page(overlay_rect, appendix_pdf, i)
                         else:
                             # Full page overlay for additional pages
@@ -700,6 +721,76 @@ class ReportCompiler:
         finally:
             base_pdf.close()
     
+    def _find_marker_and_calculate_rect_from_table(self, pdf_doc, placeholder):
+        """
+        Find the overlay marker and calculate the overlay rectangle using table dimensions.
+        
+        Args:
+            pdf_doc: The PDF document to search
+            placeholder (dict): Placeholder information with marker and table dimensions
+            
+        Returns:
+            tuple: (overlay_rect, page_index) or (None, None) if not found
+        """
+        marker = placeholder.get('marker')
+        if not marker:
+            print(f"      ❌ No marker found in placeholder")
+            return None, None
+        
+        print(f"      🔍 Searching for marker: {marker}")
+        
+        # Search for the marker in the PDF
+        marker_info = self._find_marker_position(pdf_doc, marker)
+        
+        if not marker_info:
+            print(f"      ❌ Marker not found in PDF")
+            return None, None
+        
+        start_page_index = marker_info['page_index']
+        marker_rect = marker_info['rect']
+          # Convert points to inches for easier reading (72 points = 1 inch)
+        marker_x_in = marker_rect.x0 / 72
+        marker_y_in = marker_rect.y0 / 72
+        marker_width_in = marker_rect.width / 72
+        marker_height_in = marker_rect.height / 72
+        
+        print(f"      📍 Marker found at: ({marker_rect.x0:.1f}, {marker_rect.y0:.1f}) points = ({marker_x_in:.2f}, {marker_y_in:.2f}) inches")
+        print(f"      📍 Marker size: {marker_rect.width:.1f} x {marker_rect.height:.1f} points = {marker_width_in:.2f} x {marker_height_in:.2f} inches")
+        
+        # Get table dimensions from placeholder
+        table_width_pts = placeholder.get('table_width_pts', 400)
+        table_height_pts = placeholder.get('table_height_pts', 200)
+        table_width_in = table_width_pts / 72
+        table_height_in = table_height_pts / 72
+        
+        print(f"      📏 Table dimensions: {table_width_pts:.1f} x {table_height_pts:.1f} points = {table_width_in:.2f} x {table_height_in:.2f} inches")
+          # Calculate overlay rectangle using marker position as top-left corner
+        # and adding table dimensions for bottom-right corner
+        overlay_rect = fitz.Rect(
+            marker_rect.x0,                           # left (marker x position)
+            marker_rect.y0,                           # top (marker y position)  
+            marker_rect.x0 + table_width_pts,         # right (left + table width)
+            marker_rect.y0 + table_height_pts         # bottom (top + table height)
+        )
+        
+        # Convert overlay rectangle to inches for easier reading
+        overlay_x_in = overlay_rect.x0 / 72
+        overlay_y_in = overlay_rect.y0 / 72
+        overlay_width_in = overlay_rect.width / 72
+        overlay_height_in = overlay_rect.height / 72
+        
+        print(f"      📐 Calculated overlay rectangle:")
+        print(f"         • Points: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
+        print(f"         • Inches: ({overlay_x_in:.2f}, {overlay_y_in:.2f}) to ({overlay_x_in + overlay_width_in:.2f}, {overlay_y_in + overlay_height_in:.2f})")
+        print(f"         • Size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points = {overlay_width_in:.2f} x {overlay_height_in:.2f} inches")
+        
+        # Remove the marker text from the page
+        page = pdf_doc[start_page_index]
+        page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill
+        page.apply_redactions()
+        print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        
+        return overlay_rect, start_page_index    
     def _find_marker_position(self, pdf_doc, marker):
         """
         Find the position of a marker in the PDF document.
@@ -715,451 +806,13 @@ class ReportCompiler:
             page = pdf_doc[page_num]
             text_instances = page.search_for(marker)
             
-            if text_instances:
-                # Return the first instance found
+            if text_instances:                # Return the first instance found
                 return {
                     'page_index': page_num,
-                    'rect': text_instances[0]                }
+                    'rect': text_instances[0]
+                }
         
         return None
-    
-    def _calculate_overlay_rectangle(self, placeholder, marker_rect, page):
-        """
-        Calculate the overlay rectangle using Word-to-PDF coordinate mapping.
-        
-        Args:
-            placeholder (dict): Placeholder information including table index
-            marker_rect: Rectangle where the marker was found
-            page: The PDF page object
-            
-        Returns:
-            fitz.Rect: Rectangle for overlay positioning
-        """
-        # Get page dimensions
-        page_rect = page.rect
-        page_width = page_rect.width
-        page_height = page_rect.height
-        
-        print(f"      📄 Page size: {page_width:.1f} x {page_height:.1f} points")
-          # Get table index from placeholder
-        table_index = placeholder.get('table_index')
-        
-        if table_index is not None and table_index in self.table_coordinates:
-            print(f"      🎯 Using Word-to-PDF coordinate mapping for table {table_index}")
-            
-            # Use stored Word table coordinates
-            table_coord_data = self.table_coordinates[table_index]
-            dimensions = table_coord_data['dimensions']
-            
-            overlay_rect = self._convert_word_coords_to_pdf(dimensions, page_rect, marker_rect)
-            
-            if overlay_rect:
-                print(f"      ✅ Converted Word coordinates to PDF coordinates")
-                print(f"      📋 Overlay rectangle: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
-                print(f"      📏 Overlay size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points")
-                return overlay_rect
-            else:
-                print(f"      ⚠️ Word-to-PDF coordinate conversion failed, falling back")
-          # Fallback to table detection methods if coordinate mapping fails
-        print(f"      🔄 Falling back to table detection methods...")
-        
-        # Try to detect table boundaries using PyMuPDF table detection
-        table_rect = self._detect_table_boundaries(page, marker_rect)
-        
-        if table_rect:
-            print(f"      📋 Detected table boundaries: ({table_rect.x0:.1f}, {table_rect.y0:.1f}) to ({table_rect.x1:.1f}, {table_rect.y1:.1f})")
-            print(f"      📏 Detected table size: {table_rect.width:.1f} x {table_rect.height:.1f} points")
-            
-            # Use detected table boundaries as overlay rectangle
-            overlay_rect = table_rect
-            
-            # Validate the detected rectangle makes sense
-            if (overlay_rect.width > 50 and overlay_rect.height > 30 and 
-                overlay_rect.width < page_width and overlay_rect.height < page_height):
-                print(f"      ✅ Using detected table boundaries for overlay")
-                return overlay_rect
-            else:
-                print(f"      ⚠️ Detected table boundaries seem invalid, falling back to dimension-based calculation")
-        
-        # Final fallback: Use table dimensions from Word document
-        table_width_inches = placeholder.get('width_inches')
-        table_height_inches = placeholder.get('row_height_inches') or placeholder.get('height_inches')
-        
-        if table_width_inches and table_height_inches:
-            # Convert inches to points (1 inch = 72 points)
-            table_width_points = table_width_inches * 72
-            table_height_points = table_height_inches * 72
-            
-            print(f"      📋 Word table size: {table_width_inches:.2f}\" x {table_height_inches:.2f}\" ({table_width_points:.1f} x {table_height_points:.1f} points)")
-            
-            # Use marker position but apply smarter positioning logic
-            marker_center_x = (marker_rect.x0 + marker_rect.x1) / 2
-            marker_center_y = (marker_rect.y0 + marker_rect.y1) / 2
-            
-            # Estimate table position based on marker and typical table layouts
-            # Assume marker is near the top-left of the table cell
-            estimated_table_x0 = max(20, marker_rect.x0 - 20)  # Small offset from marker
-            estimated_table_y0 = max(20, marker_rect.y0 - 20)  # Small offset from marker
-            estimated_table_x1 = min(page_width - 20, estimated_table_x0 + table_width_points)
-            estimated_table_y1 = min(page_height - 20, estimated_table_y0 + table_height_points)
-            
-            # Adjust if table goes beyond page boundaries
-            if estimated_table_x1 > page_width - 20:
-                estimated_table_x0 = page_width - 20 - table_width_points
-                estimated_table_x1 = page_width - 20
-            if estimated_table_y1 > page_height - 20:
-                estimated_table_y0 = page_height - 20 - table_height_points
-                estimated_table_y1 = page_height - 20
-                
-            overlay_rect = fitz.Rect(estimated_table_x0, estimated_table_y0, estimated_table_x1, estimated_table_y1)
-            print(f"      📐 Estimated table position: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
-            
-        else:
-            print(f"      ⚠️ Table dimensions not available, using marker-based estimation")
-            # Fallback: Use marker position and estimate reasonable size
-            default_width = min(400, page_width * 0.6)  # 400 points or 60% of page width
-            default_height = min(300, page_height * 0.4)  # 300 points or 40% of page height
-            
-            marker_center_x = (marker_rect.x0 + marker_rect.x1) / 2
-            marker_center_y = (marker_rect.y0 + marker_rect.y1) / 2
-            
-            overlay_x0 = max(20, marker_center_x - default_width / 2)
-            overlay_y0 = max(20, marker_center_y - default_height / 2)
-            overlay_x1 = min(page_width - 20, overlay_x0 + default_width)
-            overlay_y1 = min(page_height - 20, overlay_y0 + default_height)
-            
-            overlay_rect = fitz.Rect(overlay_x0, overlay_y0, overlay_x1, overlay_y1)
-            
-        return overlay_rect
-    
-    def _convert_word_coords_to_pdf(self, word_dimensions, page_rect, marker_rect):
-        """
-        Convert Word table coordinates to PDF coordinates for precise overlay placement.
-        
-        Args:
-            word_dimensions (dict): Table dimensions and position from Word
-            page_rect: PDF page rectangle
-            marker_rect: Where the marker was found in the PDF
-            
-        Returns:
-            fitz.Rect: Converted PDF coordinates or None if conversion fails
-        """
-        try:
-            print(f"      🔄 Converting Word coordinates to PDF coordinates...")
-            
-            # Get Word table dimensions
-            width_inches = word_dimensions.get('width_inches') or word_dimensions.get('column_width_inches')
-            height_inches = word_dimensions.get('row_height_inches')
-            
-            if not width_inches or not height_inches:
-                print(f"      ❌ Missing required dimensions (width: {width_inches}, height: {height_inches})")
-                return None
-            
-            # Convert to PDF points (1 inch = 72 points)
-            width_points = width_inches * 72
-            height_points = height_inches * 72
-            
-            print(f"      📏 Word table: {width_inches:.2f}\" x {height_inches:.2f}\" = {width_points:.1f} x {height_points:.1f} points")
-            
-            # Calculate position based on Word positioning information
-            if word_dimensions.get('has_absolute_position'):
-                # Table has absolute positioning in Word
-                pos_x_inches = word_dimensions.get('pos_x_inches', 0)
-                pos_y_inches = word_dimensions.get('pos_y_inches', 0)
-                
-                # Convert to PDF coordinates
-                pdf_x = pos_x_inches * 72
-                pdf_y = pos_y_inches * 72
-                
-                print(f"      📍 Absolute position: ({pos_x_inches:.2f}\", {pos_y_inches:.2f}\") = ({pdf_x:.1f}, {pdf_y:.1f}) points")
-                
-            else:
-                # Use marker position with intelligent offset calculation
-                # Estimate table position relative to marker
-                
-                # Check for table indentation
-                indent_inches = word_dimensions.get('indent_inches', 0)
-                indent_points = indent_inches * 72
-                
-                # Calculate left margin (typical Word margins)
-                # Standard Word margins: 1" top/bottom, 1.25" left/right
-                standard_left_margin = 1.25 * 72  # 90 points
-                
-                # Position table accounting for indentation
-                pdf_x = standard_left_margin + indent_points
-                  # For Y position, use marker position as reference
-                # The marker should be at the top of the table, not center
-                marker_top_y = marker_rect.y0
-                
-                # Adjust for typical Word table positioning
-                # In Word-to-PDF conversion, tables often have some padding above
-                table_top_padding = 10  # points
-                pdf_y = max(table_top_padding, marker_top_y - table_top_padding)
-                
-                print(f"      📍 Calculated position: margin({standard_left_margin:.1f}) + indent({indent_points:.1f}) = x:{pdf_x:.1f}")
-                print(f"      📍 Y position: marker_top({marker_top_y:.1f}) - padding({table_top_padding}) = y:{pdf_y:.1f}")
-            
-            # Create the overlay rectangle
-            overlay_rect = fitz.Rect(
-                max(0, pdf_x),
-                max(0, pdf_y),
-                min(page_rect.width, pdf_x + width_points),
-                min(page_rect.height, pdf_y + height_points)
-            )
-            
-            # Validate the rectangle
-            if (overlay_rect.width > 50 and overlay_rect.height > 30 and 
-                overlay_rect.x1 <= page_rect.width and overlay_rect.y1 <= page_rect.height):
-                return overlay_rect
-            else:
-                print(f"      ⚠️ Converted coordinates are invalid: {overlay_rect}")
-                return None
-                
-        except Exception as e:
-            print(f"      ❌ Word-to-PDF coordinate conversion failed: {e}")
-            return None
-            
-    def _detect_table_boundaries(self, page, marker_rect):
-        """
-        Detect table boundaries using PyMuPDF's table detection capabilities.
-        
-        Args:
-            page: The PDF page object
-            marker_rect: Rectangle where the marker was found
-            
-        Returns:
-            fitz.Rect: Table cell boundaries or None if not detected
-        """
-        try:
-            print(f"      🔍 Attempting table detection around marker...")
-            
-            # Use PyMuPDF's table detection
-            table_finder = page.find_tables()
-            tables = list(table_finder)  # Convert TableFinder to list
-            
-            if not tables:
-                print(f"      📋 No tables detected on page")
-                # Try alternative detection method
-                return self._detect_table_by_text_analysis(page, marker_rect)
-            
-            print(f"      📋 Found {len(tables)} table(s) on page")
-            
-            # Find the table that contains the marker
-            marker_center_x = (marker_rect.x0 + marker_rect.x1) / 2
-            marker_center_y = (marker_rect.y0 + marker_rect.y1) / 2
-            marker_point = fitz.Point(marker_center_x, marker_center_y)
-            
-            for i, table in enumerate(tables):
-                table_rect = table.bbox
-                print(f"      📋 Table {i+1}: ({table_rect.x0:.1f}, {table_rect.y0:.1f}) to ({table_rect.x1:.1f}, {table_rect.y1:.1f})")
-                
-                # Check if marker is within this table
-                if table_rect.contains(marker_point):
-                    print(f"      ✅ Marker found in table {i+1}")
-                    
-                    # Try to find the specific cell containing the marker
-                    cell_rect = self._find_cell_in_table(table, marker_point)
-                    if cell_rect:
-                        print(f"      📋 Found containing cell: ({cell_rect.x0:.1f}, {cell_rect.y0:.1f}) to ({cell_rect.x1:.1f}, {cell_rect.y1:.1f})")
-                        return cell_rect
-                    else:
-                        # Fallback: use entire table
-                        print(f"      📋 Using entire table as overlay area")
-                        return table_rect
-            
-            print(f"      ⚠️ Marker not found within any detected table")
-            return None
-            
-        except Exception as e:
-            print(f"      ❌ Table detection failed: {e}")
-            return None
-    
-    def _detect_table_by_text_analysis(self, page, marker_rect):
-        """
-        Alternative table detection method using text analysis when PyMuPDF table detection fails.
-        
-        This method analyzes text positioning to identify table-like structures.
-        
-        Args:
-            page: The PDF page object
-            marker_rect: Rectangle where the marker was found
-            
-        Returns:
-            fitz.Rect: Estimated table boundaries or None if not detected
-        """
-        try:
-            print(f"      🔍 Attempting text-based table detection...")
-            
-            # Get all text blocks on the page
-            text_dict = page.get_text("dict")
-            
-            # Look for text elements near the marker
-            nearby_texts = []
-            marker_center_x = (marker_rect.x0 + marker_rect.x1) / 2
-            marker_center_y = (marker_rect.y0 + marker_rect.y1) / 2
-            
-            # Search within a reasonable distance from the marker
-            search_distance = 200  # points
-            
-            for block in text_dict["blocks"]:
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            span_rect = fitz.Rect(span["bbox"])
-                            span_center_x = (span_rect.x0 + span_rect.x1) / 2
-                            span_center_y = (span_rect.y0 + span_rect.y1) / 2
-                            
-                            # Calculate distance from marker
-                            distance = ((span_center_x - marker_center_x) ** 2 + 
-                                      (span_center_y - marker_center_y) ** 2) ** 0.5
-                            
-                            if distance <= search_distance:
-                                nearby_texts.append({
-                                    'rect': span_rect,
-                                    'text': span["text"],
-                                    'distance': distance
-                                })
-            
-            if not nearby_texts:
-                print(f"      📋 No text elements found near marker")
-                return None
-            
-            # Find the bounds of nearby text to estimate table area
-            min_x = min(text['rect'].x0 for text in nearby_texts)
-            max_x = max(text['rect'].x1 for text in nearby_texts)
-            min_y = min(text['rect'].y0 for text in nearby_texts)
-            max_y = max(text['rect'].y1 for text in nearby_texts)
-            
-            # Look for whitespace patterns that might indicate table boundaries
-            # Group texts by their vertical positions to detect rows
-            y_positions = sorted(set(text['rect'].y0 for text in nearby_texts))
-            row_groups = []
-            
-            for y_pos in y_positions:
-                row_texts = [text for text in nearby_texts if abs(text['rect'].y0 - y_pos) < 5]  # 5 point tolerance
-                if row_texts:
-                    row_groups.append(row_texts)
-            
-            print(f"      📋 Found {len(row_groups)} text row(s) near marker")
-            
-            # If we have multiple rows, try to detect actual table structure
-            if len(row_groups) > 1:
-                # Look for consistent left margins (column alignment)
-                all_left_margins = []
-                for row in row_groups:
-                    left_margins = [text['rect'].x0 for text in row]
-                    all_left_margins.extend(left_margins)
-                
-                # Find common left margins (potential column boundaries)
-                margin_tolerance = 10  # points
-                unique_margins = []
-                for margin in sorted(set(all_left_margins)):
-                    # Check if this margin is close to an existing one
-                    is_new = True
-                    for existing in unique_margins:
-                        if abs(margin - existing) < margin_tolerance:
-                            is_new = False
-                            break
-                    if is_new:
-                        unique_margins.append(margin)
-                
-                print(f"      📋 Detected {len(unique_margins)} potential column boundary(ies)")
-                
-                # Use the leftmost and rightmost margins for table bounds
-                if len(unique_margins) >= 2:
-                    min_x = min(unique_margins) - 10  # Small padding
-                    max_x = max(unique_margins) + 100  # Estimate column width
-            
-            # Add padding to the detected bounds
-            padding_x = 20
-            padding_y = 20
-            
-            # Ensure we don't include the marker text in the final bounds
-            # if the table should be clear (this helps for invisible table borders)
-            if marker_rect.intersects(fitz.Rect(min_x, min_y, max_x, max_y)):
-                # Expand to include some space around the marker
-                min_x = min(min_x, marker_rect.x0 - padding_x)
-                max_x = max(max_x, marker_rect.x1 + padding_x)
-                min_y = min(min_y, marker_rect.y0 - padding_y)
-                max_y = max(max_y, marker_rect.y1 + padding_y)
-            
-            estimated_table = fitz.Rect(
-                max(0, min_x - padding_x),
-                max(0, min_y - padding_y),
-                min(page.rect.width, max_x + padding_x),
-                min(page.rect.height, max_y + padding_y)
-            )
-            
-            print(f"      📋 Text-based table estimate: ({estimated_table.x0:.1f}, {estimated_table.y0:.1f}) to ({estimated_table.x1:.1f}, {estimated_table.y1:.1f})")
-            print(f"      📏 Estimated size: {estimated_table.width:.1f} x {estimated_table.height:.1f} points")
-            
-            # Validate the estimated bounds
-            min_width, min_height = 100, 50
-            max_width, max_height = page.rect.width * 0.9, page.rect.height * 0.9
-            
-            if (estimated_table.width >= min_width and estimated_table.height >= min_height and 
-                estimated_table.width <= max_width and estimated_table.height <= max_height):
-                return estimated_table
-            else:
-                print(f"      ⚠️ Text-based estimation produced invalid bounds (size check failed)")
-                print(f"         Size: {estimated_table.width:.1f}x{estimated_table.height:.1f}, "
-                      f"Required: {min_width}-{max_width:.0f} x {min_height}-{max_height:.0f}")
-                return None
-                
-        except Exception as e:
-            print(f"      ❌ Text-based table detection failed: {e}")
-            return None
-    
-    def _find_cell_in_table(self, table, marker_point):
-        """
-        Find the specific cell within a table that contains the marker point.
-        
-        Args:
-            table: PyMuPDF table object
-            marker_point: Point where the marker is located
-            
-        Returns:
-            fitz.Rect: Cell boundaries or None if not found
-        """
-        try:
-            # Extract table data to get cell boundaries
-            table_data = table.extract()
-            
-            if not table_data:
-                print(f"      ⚠️ Could not extract table data")
-                return table.bbox  # Fallback to entire table
-            
-            # Try to get cell rectangles from the table
-            # PyMuPDF table objects may have different methods depending on version
-            if hasattr(table, 'cells') and table.cells:
-                print(f"      🔍 Analyzing {len(table.cells)} cells in table")
-                
-                for i, cell_rect in enumerate(table.cells):
-                    if isinstance(cell_rect, (list, tuple)) and len(cell_rect) >= 4:
-                        # Convert to fitz.Rect if needed
-                        cell_bbox = fitz.Rect(cell_rect[0], cell_rect[1], cell_rect[2], cell_rect[3])
-                    elif hasattr(cell_rect, 'bbox'):
-                        cell_bbox = cell_rect.bbox
-                    else:
-                        cell_bbox = fitz.Rect(cell_rect)
-                    
-                    print(f"      📋 Cell {i}: ({cell_bbox.x0:.1f}, {cell_bbox.y0:.1f}) to ({cell_bbox.x1:.1f}, {cell_bbox.y1:.1f})")
-                    
-                    # Check if marker point is within this cell
-                    if cell_bbox.contains(marker_point):
-                        print(f"      ✅ Marker found in cell {i}")
-                        return cell_bbox
-                
-                print(f"      ⚠️ Marker not found in any specific cell")
-            else:
-                print(f"      ⚠️ Table cells not accessible, using entire table")
-            
-            # Fallback: return entire table bounds
-            return table.bbox
-            
-        except Exception as e:
-            print(f"      ⚠️ Cell detection within table failed: {e}")
-            return table.bbox  # Safe fallback
     
     def _cleanup(self):
         """
