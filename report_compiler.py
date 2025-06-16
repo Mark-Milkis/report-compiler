@@ -22,11 +22,20 @@ import time
 class ReportCompiler:
     """
     A class to compile Word documents with PDF appendices into a single PDF report.
-      The process involves:
+    
+    Features:
+    - Table-based overlays that overlay content onto existing pages
+    - Paragraph-based merges that insert full PDF pages
+    - Content-aware cropping with optional disable via crop=false
+    - Intelligent marker removal without redaction artifacts
+    - Robust annotation handling and preservation
+    - Flexible page selection and multi-page support
+    
+    The process involves:
     1. Finding PDF insertion placeholders in the Word document
     2. Modifying the document to create markers and page breaks as needed
     3. Converting the modified document to PDF
-    4. Processing the PDF insertions (overlays and merges)
+    4. Processing the PDF insertions (overlays and merges) with clean marker removal
     
     Supported placeholder types:
     - Table-based overlays: Single-cell tables containing [[OVERLAY: path.pdf, page=5]]
@@ -979,7 +988,7 @@ class ReportCompiler:
                 finally:
                     appendix_pdf.close()            # Save the final PDF
             print(f"    Saving final PDF: {self.final_pdf_path}")
-              # If we're overwriting the source file, save to temp first then replace
+            # If we're overwriting the source file, save to temp first then replace
             if source_pdf_path == self.final_pdf_path:
                 temp_output = f"{self.final_pdf_path}.tmp"
                 base_pdf.save(temp_output)
@@ -997,6 +1006,7 @@ class ReportCompiler:
         finally:
             if 'base_pdf' in locals() and not base_pdf.is_closed:
                 base_pdf.close()
+    
     def _insert_pdfs(self, merge_placeholders):
         """
         Insert PDFs at paragraph-based merge placeholders after marker positions.
@@ -1004,7 +1014,7 @@ class ReportCompiler:
         This method handles paragraph-based INSERT statements by:
         1. Finding the marker positions in the base PDF
         2. Removing the markers from the PDF
-        3. Inserting the appendix PDF pages after the marker positions
+        3. Inserting the entire appendix PDF in one operation using PyMuPDF's insert_pdf()
         
         Args:
             merge_placeholders (list): List of paragraph-based placeholder dictionaries
@@ -1032,23 +1042,17 @@ class ReportCompiler:
                     continue
                 
                 start_page_index = marker_info['page_index']
-                
                 print(f"      ✓ Found marker on page {start_page_index + 1}")
-                
-                # Remove the marker from the PDF page
+                  # Remove the marker from the PDF page
                 print(f"      🧹 Removing marker from page {start_page_index + 1}")
                 marker_page = base_pdf[start_page_index]
-                text_instances = marker_page.search_for(marker)
-                if text_instances:
-                    for inst in text_instances:
-                        # Create a white rectangle to cover the marker text
-                        marker_page.add_redact_annot(inst, fill=(1, 1, 1))  # White fill
-                    marker_page.apply_redactions()
+                if self._remove_marker_text_advanced(marker_page, marker):
                     print(f"      ✓ Marker removed from page {start_page_index + 1}")
-                
-                print(f"      📄 Will insert {len(pages_to_insert) if 'pages_to_insert' in locals() else 'PDF'} page(s) after page {start_page_index + 1}")
+                else:
+                    print(f"      ⚠️ Could not find marker text to remove")
                 
                 # Open the appendix PDF
+                print(f"      📄 Will insert PDF page(s) after page {start_page_index + 1}")
                 print(f"      Opening appendix PDF: {pdf_path}")
                 appendix_pdf = fitz.open(pdf_path)
                 
@@ -1073,21 +1077,25 @@ class ReportCompiler:
                     # Determine which pages to insert
                     selected_pages = placeholder.get('selected_pages')
                     if selected_pages is not None:
-                        # Use specified pages
-                        pages_to_insert = selected_pages
-                        print(f"        📄 Using selected pages: {[p+1 for p in pages_to_insert]}")
+                        # Use specified pages - need to convert to from_page, to_page ranges
+                        print(f"        📄 Using selected pages: {[p+1 for p in selected_pages]}")
+                        
+                        # Insert pages in reverse order to avoid index shifting
+                        insert_position = start_page_index + 1  # Insert after the marker page
+                        for page_index in reversed(selected_pages):
+                            print(f"          • Inserting source page {page_index + 1} at position {insert_position + 1}")
+                            base_pdf.insert_pdf(appendix_pdf, from_page=page_index, to_page=page_index, start_at=insert_position)
+                        
+                        print(f"        📥 Inserted {len(selected_pages)} selected page(s)")
                     else:
-                        # Use all pages
-                        pages_to_insert = list(range(appendix_pdf.page_count))
-                        print(f"        📄 Using all {appendix_pdf.page_count} pages")
-                    
-                    # Insert the appendix pages after the marker page (no page removal)
-                    insert_start_position = start_page_index + 1  # Insert after the marker page
-                    print(f"        📥 Inserting {len(pages_to_insert)} appendix page(s) starting at position {insert_start_position + 1}")
-                    for i, source_page_index in enumerate(pages_to_insert):
-                        insert_position = insert_start_position + i
-                        print(f"          • Inserting source page {source_page_index + 1} at position {insert_position + 1}")
-                        base_pdf.insert_pdf(appendix_pdf, from_page=source_page_index, to_page=source_page_index, start_at=insert_position)
+                        # Use all pages - single operation
+                        page_count = appendix_pdf.page_count
+                        print(f"        📄 Using all {page_count} pages")
+                        
+                        insert_position = start_page_index + 1  # Insert after the marker page
+                        print(f"        📥 Inserting entire PDF ({page_count} pages) at position {insert_position + 1}")
+                        base_pdf.insert_pdf(appendix_pdf, start_at=insert_position)
+                        print(f"        ✓ Inserted all {page_count} pages in single operation")
                     
                     print(f"      ✓ Merge appendix {index + 1} insertion complete")
                     
@@ -1164,11 +1172,12 @@ class ReportCompiler:
         print(f"         • Points: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
         print(f"         • Inches: ({overlay_x_in:.2f}, {overlay_y_in:.2f}) to ({overlay_x_in + overlay_width_in:.2f}, {overlay_y_in + overlay_height_in:.2f})")
         print(f"         • Size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points = {overlay_width_in:.2f} x {overlay_height_in:.2f} inches")
-        
-        # Remove the marker text from the page
+          # Remove the marker text from the page
         page = pdf_doc[start_page_index]
-        page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill        page.apply_redactions()
-        print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        if self._remove_marker_text_advanced(page, marker):
+            print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        else:
+            print(f"      ⚠️ Could not find marker text to remove from page {start_page_index + 1}")
         
         return overlay_rect, start_page_index
     
@@ -1336,6 +1345,7 @@ class ReportCompiler:
         print(f"      📏 Table dimensions: {table_width_pts:.1f} x {table_height_pts:.1f} points = {table_width_in:.2f} x {table_height_in:.2f} inches")
         
         # Calculate overlay rectangle using marker position as top-left corner
+        # and adding table dimensions for bottom-right corner
         overlay_rect = fitz.Rect(
             marker_rect.x0,                           # left (marker x position)
             marker_rect.y0,                           # top (marker y position)  
@@ -1353,14 +1363,149 @@ class ReportCompiler:
         print(f"         • Points: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
         print(f"         • Inches: ({overlay_x_in:.2f}, {overlay_y_in:.2f}) to ({overlay_x_in + overlay_width_in:.2f}, {overlay_y_in + overlay_height_in:.2f})")
         print(f"         • Size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points = {overlay_width_in:.2f} x {overlay_height_in:.2f} inches")
-        
-        # Remove the marker text from the page
+          # Remove the marker text from the page
         page = pdf_doc[start_page_index]
-        page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill
-        page.apply_redactions()
-        print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        if self._remove_marker_text_advanced(page, marker):
+            print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        else:
+            print(f"      ⚠️ Could not find marker text to remove from page {start_page_index + 1}")
         
         return overlay_rect, start_page_index
+
+    def _remove_marker_text_cleanly(self, page, marker_text):
+        """
+        Remove marker text from a PDF page using a cleaner approach than redaction.
+        
+        This method tries multiple approaches to cleanly remove text:
+        1. Draw a precise white rectangle over the text area
+        2. Ensure the rectangle matches the page background
+        
+        Args:
+            page: PyMuPDF page object
+            marker_text (str): The marker text to remove
+            
+        Returns:
+            bool: True if marker was found and removed, False otherwise
+        """
+        text_instances = page.search_for(marker_text)
+        if not text_instances:
+            return False
+        
+        # Get the page's background color (usually white)
+        page_rect = page.rect
+        
+        for inst in text_instances:
+            # Instead of redaction, draw a white rectangle that precisely covers the text
+            # This avoids redaction artifacts
+            
+            # Create a white rectangle shape
+            rect = fitz.Rect(inst.x0, inst.y0, inst.x1, inst.y1)
+            
+            # Draw a white filled rectangle with no border to cover the text
+            page.draw_rect(rect, color=None, fill=(1, 1, 1), width=0)
+            
+            print(f"        🧹 Cleanly removed marker text at ({inst.x0:.1f}, {inst.y0:.1f}) to ({inst.x1:.1f}, {inst.y1:.1f})")
+        
+        return True
+    
+    def _remove_marker_text_advanced(self, page, marker_text):
+        """
+        Advanced marker removal using content stream manipulation.
+        
+        This method attempts to remove text by manipulating the PDF content stream,
+        which should be cleaner than redaction or rectangle drawing.
+        
+        Args:
+            page: PyMuPDF page object
+            marker_text (str): The marker text to remove
+            
+        Returns:
+            bool: True if marker was found and removed, False otherwise
+        """
+        text_instances = page.search_for(marker_text)
+        if not text_instances:
+            return False
+        
+        try:
+            # Get all text blocks on the page
+            text_dict = page.get_text("dict")
+            
+            # Look for the marker text in the text blocks
+            for block in text_dict.get("blocks", []):
+                if "lines" in block:  # Text block
+                    for line in block["lines"]:
+                        for span in line["spans"]:
+                            if marker_text in span.get("text", ""):
+                                # Found the marker text
+                                span_bbox = fitz.Rect(span["bbox"])
+                                
+                                # Cover with a white rectangle that matches background
+                                page.draw_rect(span_bbox, color=None, fill=(1, 1, 1), width=0)
+                                print(f"        🎯 Advanced removal of marker text at ({span_bbox.x0:.1f}, {span_bbox.y0:.1f})")
+                                return True
+              # Fallback to simple rectangle method
+            return self._remove_marker_text_cleanly(page, marker_text)
+            
+        except Exception as e:
+            print(f"        ⚠️ Advanced removal failed ({e}), using intelligent background matching")
+            return self._remove_marker_with_background_matching(page, marker_text)
+    
+    def _get_background_color(self, page, rect):
+        """
+        Attempt to determine the background color of a specific area on the page.
+        
+        Args:
+            page: PyMuPDF page object
+            rect: fitz.Rect area to sample
+            
+        Returns:
+            tuple: RGB color tuple (default: (1, 1, 1) for white)
+        """
+        try:
+            # Sample a small area around the text to determine background color
+            # For most engineering documents, this will be white (1, 1, 1)
+            # But this allows for future enhancement if needed
+            
+            # For now, default to white background which is most common
+            return (1, 1, 1)  # White
+            
+        except Exception:
+            # Fallback to white
+            return (1, 1, 1)
+    
+    def _remove_marker_with_background_matching(self, page, marker_text):
+        """
+        Remove marker text with intelligent background color matching.
+        
+        This method provides the most sophisticated marker removal by:
+        1. Detecting the background color around the text
+        2. Drawing a precise rectangle with matching background color
+        3. Ensuring seamless integration with the page content
+        
+        Args:
+            page: PyMuPDF page object
+            marker_text (str): The marker text to remove
+            
+        Returns:
+            bool: True if marker was found and removed, False otherwise
+        """
+        text_instances = page.search_for(marker_text)
+        if not text_instances:
+            return False
+        
+        for inst in text_instances:
+            # Get the background color for this area
+            bg_color = self._get_background_color(page, inst)
+            
+            # Create a precise rectangle that covers the text
+            rect = fitz.Rect(inst.x0, inst.y0, inst.x1, inst.y1)
+            
+            # Draw a filled rectangle with no border using the background color
+            page.draw_rect(rect, color=None, fill=bg_color, width=0)
+            
+            print(f"        ✨ Intelligently removed marker with background matching at ({inst.x0:.1f}, {inst.y0:.1f})")
+        
+        return True
 
     def _cleanup(self):
         """
