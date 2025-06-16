@@ -53,15 +53,88 @@ class ReportCompiler:
         base_dir = os.path.dirname(self.input_docx_path)
         self.temp_docx_path = os.path.join(base_dir, f"~temp_modified_report_{timestamp}.docx")
         self.temp_pdf_path = os.path.join(base_dir, f"~temp_base_{timestamp}.pdf")
-        
-        # Compile regex for finding placeholders
-        self.placeholder_regex = re.compile(r"\[\[INSERT:\s*(.*?)\s*\]\]")
+          # Compile regex for finding placeholders (now supports page specifications)
+        # Format: [[INSERT: path.pdf:1-3]] or [[INSERT: path.pdf:5]] or [[INSERT: path.pdf]]
+        self.placeholder_regex = re.compile(r"\[\[INSERT:\s*([^:\]]+?)(?::([^\]]+))?\s*\]\]")
         
         print(f"Input DOCX: {self.input_docx_path}")
         print(f"Output PDF: {self.final_pdf_path}")
         print(f"Temp DOCX: {self.temp_docx_path}")
         print(f"Temp PDF: {self.temp_pdf_path}")
     
+    def _parse_page_specification(self, page_spec):
+        """
+        Parse page specifications from INSERT statements.
+        
+        Supported formats:
+        - None or empty: All pages
+        - "5": Single page (5)
+        - "1-3": Range of pages (1, 2, 3)
+        - "2-": Pages from 2 to end
+        - "1,3,5": Specific pages (1, 3, 5)
+        - "1-3,7,9-": Mixed specification
+        
+        Args:
+            page_spec (str): Page specification string
+            
+        Returns:
+            None: Process all pages
+            dict: Dictionary with 'pages' list and optional 'open_range_start'
+        """
+        if not page_spec or not page_spec.strip():
+            return None  # Process all pages
+        
+        page_spec = page_spec.strip()
+        selected_pages = set()
+        
+        try:
+            # Split by commas for multiple specifications
+            parts = [part.strip() for part in page_spec.split(',')]
+            
+            for part in parts:
+                if '-' in part:
+                    # Range specification
+                    if part.endswith('-'):
+                        # Open-ended range like "2-"
+                        start = int(part[:-1]) - 1  # Convert to 0-based
+                        selected_pages.add(('range_from', start))
+                    else:
+                        # Closed range like "1-3"
+                        start_str, end_str = part.split('-', 1)
+                        start = int(start_str) - 1  # Convert to 0-based
+                        end = int(end_str) - 1      # Convert to 0-based
+                        selected_pages.update(range(start, end + 1))
+                else:
+                    # Single page
+                    page = int(part) - 1  # Convert to 0-based
+                    selected_pages.add(page)
+            
+            # Handle open-ended ranges
+            final_pages = []
+            open_range_start = None
+            
+            for item in selected_pages:
+                if isinstance(item, tuple) and item[0] == 'range_from':
+                    open_range_start = item[1]
+                else:
+                    final_pages.append(item)
+            
+            # Sort the pages
+            final_pages = sorted(final_pages)
+            
+            print(f"        📄 Page specification '{page_spec}' parsed to: {[p+1 for p in final_pages]}" + 
+                  (f" plus {open_range_start+1}+" if open_range_start is not None else ""))
+            
+            return {
+                'pages': final_pages,
+                'open_range_start': open_range_start
+            }
+            
+        except (ValueError, IndexError) as e:
+            print(f"        ❌ Invalid page specification '{page_spec}': {e}")
+            print(f"        📝 Using all pages instead")
+            return None
+
     def run(self):
         """
         Main public method that executes the entire workflow.
@@ -181,24 +254,26 @@ class ReportCompiler:
                 if rows == 1 and cols == 1:
                     cell = table.rows[0].cells[0]
                     cell_text = cell.text.strip()
-                    
-                    # Check if this cell contains an INSERT placeholder
+                      # Check if this cell contains an INSERT placeholder
                     match = self.placeholder_regex.search(cell_text)
                     if match:
                         pdf_path_raw = match.group(1).strip()
+                        page_spec = match.group(2)  # Page specification (could be None)
                         
                         print(f"   📋 Found table placeholder #{len(placeholders)+1}:")
                         print(f"      • Raw path: {pdf_path_raw}")
+                        if page_spec:
+                            print(f"      • Page specification: {page_spec}")
                         print(f"      • Table index: {table_idx}")
                         print(f"      • Table type: Single-cell (1x1)")
                         print(f"      • Cell text: '{cell_text}'")
-                        
-                        # Try to get table dimensions
+                          # Try to get table dimensions
                         dimensions = self._get_table_dimensions(table, table_idx)
                         
                         table_info = {
                             'type': 'overlay',
                             'pdf_path_raw': pdf_path_raw,
+                            'page_spec': page_spec,
                             'table_index': table_idx,
                             'table_text': cell_text,
                             'source': f'table_{table_idx}',
@@ -337,19 +412,22 @@ class ReportCompiler:
         """
         placeholders = []
         doc = Document(self.input_docx_path)
-        
         for para_idx, paragraph in enumerate(doc.paragraphs):
             match = self.placeholder_regex.search(paragraph.text)
             if match:
                 pdf_path_raw = match.group(1).strip()
+                page_spec = match.group(2)  # Page specification (could be None)
                 
                 print(f"   📄 Found paragraph placeholder #{len(placeholders)+1}:")
                 print(f"      • Raw path: {pdf_path_raw}")
+                if page_spec:
+                    print(f"      • Page specification: {page_spec}")
                 print(f"      • Paragraph index: {para_idx}")
                 
                 placeholders.append({
                     'type': 'merge',
                     'pdf_path_raw': pdf_path_raw,
+                    'page_spec': page_spec,
                     'paragraph_index': para_idx,
                     'source': f'paragraph_{para_idx}'
                 })
@@ -391,13 +469,50 @@ class ReportCompiler:
             if not os.path.exists(pdf_path):
                 print(f"      ❌ ERROR: PDF file not found")
                 continue
-            
-            # Get page count
+              # Get page count
             try:
                 pdf_doc = fitz.open(pdf_path)
-                page_count = pdf_doc.page_count
+                total_pages = pdf_doc.page_count
                 pdf_doc.close()
-                print(f"      ✅ Valid PDF with {page_count} page(s)")
+                
+                # Parse page specification if provided
+                page_spec = placeholder.get('page_spec')
+                if page_spec:
+                    page_selection = self._parse_page_specification(page_spec)
+                    if page_selection:
+                        # Calculate which pages will actually be processed
+                        pages = page_selection['pages']
+                        open_range_start = page_selection.get('open_range_start')
+                        
+                        # Handle open-ended ranges
+                        if open_range_start is not None:
+                            pages.extend(range(open_range_start, total_pages))
+                        
+                        # Filter out pages that don't exist
+                        valid_pages = [p for p in pages if 0 <= p < total_pages]
+                        
+                        if not valid_pages:
+                            print(f"      ❌ ERROR: No valid pages in specification '{page_spec}' for {total_pages}-page PDF")
+                            continue
+                        
+                        page_count = len(valid_pages)
+                        print(f"      ✅ Valid PDF with {total_pages} total pages, using {page_count} specified pages: {[p+1 for p in valid_pages]}")
+                        
+                        # Store the actual pages to process
+                        placeholder['selected_pages'] = valid_pages
+                        placeholder['total_pages'] = total_pages
+                    else:
+                        # Invalid page specification, use all pages
+                        page_count = total_pages
+                        print(f"      ✅ Valid PDF with {page_count} page(s) (using all pages)")
+                        placeholder['selected_pages'] = None
+                        placeholder['total_pages'] = total_pages
+                else:
+                    # No page specification, use all pages
+                    page_count = total_pages
+                    print(f"      ✅ Valid PDF with {page_count} page(s)")
+                    placeholder['selected_pages'] = None
+                    placeholder['total_pages'] = total_pages
                   # Add resolved info to placeholder
                 placeholder['pdf_path'] = pdf_path
                 placeholder['page_count'] = page_count
@@ -757,15 +872,25 @@ class ReportCompiler:
                         appendix_pdf.bake(annots=True)
                         print(f"        ✓ Annotations baked into PDF content")
                     else:
-                        print(f"        📝 No annotations found in PDF")
-                      # Overlay each page of the appendix
-                    for i in range(page_count):
+                        print(f"        📝 No annotations found in PDF")                    # Determine which pages to overlay
+                    selected_pages = placeholder.get('selected_pages')
+                    if selected_pages is not None:
+                        # Use specified pages
+                        pages_to_overlay = selected_pages
+                        print(f"        📄 Using selected pages: {[p+1 for p in pages_to_overlay]}")
+                    else:
+                        # Use all pages
+                        pages_to_overlay = list(range(page_count))
+                        print(f"        📄 Using all {page_count} pages")
+                    
+                    # Overlay each selected page of the appendix
+                    for i, source_page_index in enumerate(pages_to_overlay):
                         if i == 0:
                             # First page: use the original marker and overlay rectangle
-                            print(f"        Overlaying page {i + 1}/{page_count} -> base page {start_page_index + 1}")
+                            print(f"        Overlaying source page {source_page_index + 1} -> base page {start_page_index + 1} (position {i + 1}/{len(pages_to_overlay)})")
                             target_page = base_pdf[start_page_index]
                             print(f"        📌 Precise overlay within detected cell boundaries")
-                            target_page.show_pdf_page(overlay_rect, appendix_pdf, i)
+                            target_page.show_pdf_page(overlay_rect, appendix_pdf, source_page_index)
                         else:
                             # Additional pages: find the replicated table markers
                             additional_markers = placeholder.get('additional_markers', [])
@@ -773,7 +898,7 @@ class ReportCompiler:
                                 marker_info = additional_markers[i - 1]
                                 marker = marker_info['marker']
                                 
-                                print(f"        Overlaying page {i + 1}/{page_count} -> searching for marker {marker}")
+                                print(f"        Overlaying source page {source_page_index + 1} -> searching for marker {marker} (position {i + 1}/{len(pages_to_overlay)})")
                                 
                                 # Find the marker for this additional page
                                 additional_overlay_rect, additional_page_index = self._find_marker_and_calculate_rect_from_table_with_marker(
@@ -783,11 +908,11 @@ class ReportCompiler:
                                 if additional_overlay_rect:
                                     target_page = base_pdf[additional_page_index]
                                     print(f"        📌 Precise overlay in replicated table on page {additional_page_index + 1}")
-                                    target_page.show_pdf_page(additional_overlay_rect, appendix_pdf, i)
+                                    target_page.show_pdf_page(additional_overlay_rect, appendix_pdf, source_page_index)
                                 else:
-                                    print(f"        ❌ Could not find marker for page {i + 1}, skipping")
+                                    print(f"        ❌ Could not find marker for position {i + 1}, skipping")
                             else:
-                                print(f"        ❌ No replicated table found for page {i + 1}, skipping")
+                                print(f"        ❌ No replicated table found for position {i + 1}, skipping")
                     
                     print(f"      ✓ Appendix {index + 1} overlay complete")
                     
