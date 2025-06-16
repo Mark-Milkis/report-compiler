@@ -53,10 +53,10 @@ class ReportCompiler:
         base_dir = os.path.dirname(self.input_docx_path)
         self.temp_docx_path = os.path.join(base_dir, f"~temp_modified_report_{timestamp}.docx")
         self.temp_pdf_path = os.path.join(base_dir, f"~temp_base_{timestamp}.pdf")        # Compile regex patterns for finding placeholders
-        # OVERLAY format: [[OVERLAY: path.pdf, page=5]] or [[OVERLAY: path.pdf]]
+        # OVERLAY format: [[OVERLAY: path.pdf, page=5, crop=false]] or [[OVERLAY: path.pdf]]
         # INSERT format: [[INSERT: path.pdf]] or [[INSERT: path.pdf:1-3]]
         # Note: Handle Windows paths with drive letters like C:\path
-        self.overlay_regex = re.compile(r"\[\[OVERLAY:\s*([^,\]]+?)(?:,\s*page=([^\]]+))?\s*\]\]")
+        self.overlay_regex = re.compile(r"\[\[OVERLAY:\s*([^,\]]+?)(?:,\s*(.+?))?\s*\]\]")
         self.insert_regex = re.compile(r"\[\[INSERT:\s*(.+?)(?::([^:\\\/\]]+))?\s*\]\]")
         
         print(f"Input DOCX: {self.input_docx_path}")
@@ -240,12 +240,42 @@ class ReportCompiler:
         if not validated_placeholders:
             print("⚠️  No valid placeholders found - document will be converted as-is")
             return Document(self.input_docx_path), []
-        
-        # Step 5: Modify document based on placeholder types
+          # Step 5: Modify document based on placeholder types
         print(f"\n🔧 PHASE 2: Modifying document...")
         modified_doc = self._create_modified_document(overlay_placeholders, merge_placeholders)
         
         return modified_doc, validated_placeholders
+    
+    def _parse_overlay_parameters(self, params_string):
+        """
+        Parse parameters from overlay placeholder.
+        
+        Args:
+            params_string: String containing parameters (e.g., "page=1, crop=false" or just "page=1")
+        
+        Returns:
+            dict: Dictionary with 'page' and 'crop' parameters
+        """
+        result = {'page': None, 'crop': True}  # Default values
+        
+        if not params_string:
+            return result
+        
+        # Split by comma and process each parameter
+        params = [param.strip() for param in params_string.split(',')]
+        
+        for param in params:
+            if '=' in param:
+                key, value = param.split('=', 1)
+                key = key.strip().lower()
+                value = value.strip().lower()
+                
+                if key == 'page':
+                    result['page'] = value if value else None
+                elif key == 'crop':
+                    result['crop'] = value not in ('false', 'no', '0', 'off', 'disabled')
+        
+        return result
     
     def _find_table_placeholders(self):
         """
@@ -269,26 +299,36 @@ class ReportCompiler:
                 # Only consider single-cell tables for overlay inserts
                 if rows == 1 and cols == 1:
                     cell = table.rows[0].cells[0]
-                    cell_text = cell.text.strip()                    # Check if this cell contains an OVERLAY placeholder
+                    cell_text = cell.text.strip()
+                    
+                    # Check if this cell contains an OVERLAY placeholder
                     match = self.overlay_regex.search(cell_text)
                     if match:
                         pdf_path_raw = match.group(1).strip()
-                        page_spec = match.group(2)  # Page specification (could be None)
+                        params_string = match.group(2)  # All parameters after path
+                        
+                        # Parse parameters
+                        params = self._parse_overlay_parameters(params_string)
+                        page_spec = params['page']
+                        crop_enabled = params['crop']
                         
                         print(f"   📋 Found table OVERLAY placeholder #{len(placeholders)+1}:")
                         print(f"      • Raw path: {pdf_path_raw}")
                         if page_spec:
                             print(f"      • Page specification: page={page_spec}")
+                        print(f"      • Content cropping: {'enabled' if crop_enabled else 'disabled'}")
                         print(f"      • Table index: {table_idx}")
                         print(f"      • Table type: Single-cell (1x1)")
                         print(f"      • Cell text: '{cell_text}'")
-                          # Try to get table dimensions
+                        
+                        # Try to get table dimensions
                         dimensions = self._get_table_dimensions(table, table_idx)
                         
                         table_info = {
                             'type': 'overlay',
                             'pdf_path_raw': pdf_path_raw,
                             'page_spec': page_spec,
+                            'crop_enabled': crop_enabled,
                             'table_index': table_idx,
                             'table_text': cell_text,
                             'source': f'table_{table_idx}',
@@ -898,16 +938,20 @@ class ReportCompiler:
                     else:
                         # Use all pages
                         pages_to_overlay = list(range(page_count))
-                        print(f"        📄 Using all {page_count} pages")
-                    
+                        print(f"        📄 Using all {page_count} pages")                    
                     # Overlay each selected page of the appendix
                     for i, source_page_index in enumerate(pages_to_overlay):
+                        # Get the source page for content cropping
+                        source_page = appendix_pdf[source_page_index]
+                        crop_enabled = placeholder.get('crop_enabled', True)  # Default to True for backward compatibility
+                        content_clip_rect = self._apply_content_cropping(source_page, crop_enabled)
+                        
                         if i == 0:
                             # First page: use the original marker and overlay rectangle
                             print(f"        Overlaying source page {source_page_index + 1} -> base page {start_page_index + 1} (position {i + 1}/{len(pages_to_overlay)})")
                             target_page = base_pdf[start_page_index]
                             print(f"        📌 Precise overlay within detected cell boundaries")
-                            target_page.show_pdf_page(overlay_rect, appendix_pdf, source_page_index)
+                            target_page.show_pdf_page(overlay_rect, appendix_pdf, source_page_index, clip=content_clip_rect)
                         else:
                             # Additional pages: find the replicated table markers
                             additional_markers = placeholder.get('additional_markers', [])
@@ -919,13 +963,12 @@ class ReportCompiler:
                                 
                                 # Find the marker for this additional page
                                 additional_overlay_rect, additional_page_index = self._find_marker_and_calculate_rect_from_table_with_marker(
-                                    base_pdf, marker, marker_info['table_width_pts'], marker_info['table_height_pts']
-                                )
+                                    base_pdf, marker, marker_info['table_width_pts'], marker_info['table_height_pts']                                )
                                 
                                 if additional_overlay_rect:
                                     target_page = base_pdf[additional_page_index]
                                     print(f"        📌 Precise overlay in replicated table on page {additional_page_index + 1}")
-                                    target_page.show_pdf_page(additional_overlay_rect, appendix_pdf, source_page_index)
+                                    target_page.show_pdf_page(additional_overlay_rect, appendix_pdf, source_page_index, clip=content_clip_rect)
                                 else:
                                     print(f"        ❌ Could not find marker for position {i + 1}, skipping")
                             else:
@@ -1124,11 +1167,112 @@ class ReportCompiler:
         
         # Remove the marker text from the page
         page = pdf_doc[start_page_index]
-        page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill
-        page.apply_redactions()
+        page.add_redact_annot(marker_rect, fill=(1, 1, 1))  # White fill        page.apply_redactions()
         print(f"      ✓ Removed marker text from page {start_page_index + 1}")
         
-        return overlay_rect, start_page_index    
+        return overlay_rect, start_page_index
+    
+    def _get_content_bbox(self, pdf_page):
+        """
+        Get the bounding box of actual content (excluding margins).
+        
+        Args:
+            pdf_page: PyMuPDF page object
+            
+        Returns:
+            fitz.Rect: Bounding box of content, or None if no content found
+        """
+        content_bbox = None
+        
+        try:
+            # Get all text blocks
+            text_blocks = pdf_page.get_text("dict")
+            
+            # Include text boundaries
+            for block in text_blocks.get("blocks", []):
+                if "lines" in block:
+                    for line in block["lines"]:
+                        for span in line.get("spans", []):
+                            bbox = fitz.Rect(span["bbox"])
+                            if content_bbox is None:
+                                content_bbox = bbox
+                            else:
+                                content_bbox.include_rect(bbox)
+            
+            # Get all drawing objects
+            try:
+                drawings = pdf_page.get_drawings()
+                for drawing in drawings:
+                    bbox = fitz.Rect(drawing["rect"])
+                    if content_bbox is None:
+                        content_bbox = bbox
+                    else:
+                        content_bbox.include_rect(bbox)
+            except:
+                # get_drawings() might not be available in all PyMuPDF versions
+                pass
+            
+            # Get all images
+            try:
+                images = pdf_page.get_images()
+                for img in images:                    # Get image bbox - format: (xref, smask, width, height, bpc, colorspace, alt, name, filter)
+                    img_rect = pdf_page.get_image_bbox(img)
+                    if img_rect:
+                        if content_bbox is None:
+                            content_bbox = img_rect
+                        else:
+                            content_bbox.include_rect(img_rect)
+            except:
+                # Fallback: get images without bbox if method not available
+                pass
+        
+        except Exception as e:
+            print(f"        ⚠️ Error detecting content bbox: {e}")
+            return None
+        
+        return content_bbox
+    
+    def _apply_content_cropping(self, pdf_page, crop_enabled=True, padding=6):
+        """
+        Crop PDF page to content boundaries with optional padding, or return full page.
+        
+        Args:
+            pdf_page: PyMuPDF page object
+            crop_enabled (bool): Whether to enable content cropping (default: True)
+            padding (int): Padding around content in points (default: 6 points = 0.08 inch)
+            
+        Returns:
+            fitz.Rect: Content rectangle to use for clipping
+        """
+        if not crop_enabled:
+            print(f"        📐 Content cropping disabled, using full page ({pdf_page.rect.width / 72:.2f} x {pdf_page.rect.height / 72:.2f} inches)")
+            return pdf_page.rect
+        
+        content_bbox = self._get_content_bbox(pdf_page)
+        
+        if content_bbox and not content_bbox.is_empty:
+            # Add padding around content
+            content_bbox.x0 = max(0, content_bbox.x0 - padding)
+            content_bbox.y0 = max(0, content_bbox.y0 - padding)
+            content_bbox.x1 = min(pdf_page.rect.width, content_bbox.x1 + padding)
+            content_bbox.y1 = min(pdf_page.rect.height, content_bbox.y1 + padding)
+            
+            # Convert to inches for display
+            content_bbox_inches = (
+                content_bbox.x0 / 72, content_bbox.y0 / 72,
+                content_bbox.x1 / 72, content_bbox.y1 / 72
+            )
+            page_size_inches = (pdf_page.rect.width / 72, pdf_page.rect.height / 72)
+            
+            print(f"        📐 Content area: ({content_bbox_inches[0]:.2f}, {content_bbox_inches[1]:.2f}) to ({content_bbox_inches[2]:.2f}, {content_bbox_inches[3]:.2f}) inches")
+            print(f"        📐 Original page: {page_size_inches[0]:.2f} x {page_size_inches[1]:.2f} inches")
+            print(f"        📐 Using content-aware cropping (saves {((pdf_page.rect.width * pdf_page.rect.height) - (content_bbox.width * content_bbox.height)) / (pdf_page.rect.width * pdf_page.rect.height) * 100:.1f}% space)")
+            
+            return content_bbox
+        else:
+            print(f"        📐 No content detected or empty bbox, using full page")
+            return pdf_page.rect
+
     def _find_marker_position(self, pdf_doc, marker):
         """
         Find the position of a marker in the PDF document.
@@ -1263,10 +1407,11 @@ Placeholder formats in Word document:
   Table-based overlays (in single-cell tables):
     [[OVERLAY: appendices/sketch.pdf, page=1]]
     [[OVERLAY: C:\\Shared\\calculation.pdf]]
+    [[OVERLAY: diagrams/full_page.pdf, crop=false]]
   
   Paragraph-based merges (in standalone paragraphs):
     [[INSERT: appendices/full_report.pdf]]
-    [[INSERT: C:\\Shared\\analysis.pdf:1-5]]        """
+    [[INSERT: C:\\Shared\\analysis.pdf:1-5]]"""
     )
     
     parser.add_argument(
