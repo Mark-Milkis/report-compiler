@@ -19,6 +19,9 @@ The Report Compiler automates the creation of comprehensive PDF reports by:
 - ✅ **Error handling** - Comprehensive error reporting and validation
 - ✅ **Debug support** - `--keep-temp` flag to retain temporary files for debugging
 - ✅ **VS Code integration** - Complete debugger launch configurations
+- ✅ **Table-based overlay** - Precise PDF placement within table cell boundaries
+- ✅ **Advanced table detection** - Uses PyMuPDF table detection with text analysis fallback
+- ✅ **Intelligent positioning** - Automatically detects table structure for precise overlay placement
 
 ## Quick Start
 
@@ -116,6 +119,7 @@ Output: bridge_report.pdf with integrated appendices
 ### Core Functionality
 
 - [ ] **Multiple placeholder support per document** - Handle multiple appendices in order
+- [ ] **Recursive references** - Use recursion to handle references of nested Word documents
 - [ ] **Cross-platform support** - LibreOffice integration for Linux/Mac
 - [ ] **Batch processing** - Process multiple documents in one command
 - [ ] **Template support** - Predefined document templates with placeholders
@@ -135,6 +139,46 @@ Output: bridge_report.pdf with integrated appendices
 - [ ] **Progress indicators** - Real-time progress for large documents
 - [ ] **Preview mode** - Preview final layout before compilation
 - [ ] **Undo/rollback** - Ability to revert to previous versions
+
+## Advanced Table Detection
+
+The Report Compiler includes sophisticated coordinate mapping for precise PDF overlay placement using **Word-to-PDF Coordinate Mapping**:
+
+### Word-to-PDF Coordinate Mapping
+
+The system captures table positioning during Word document processing and converts it to PDF coordinates:
+
+1. **Word Coordinate Extraction** - Captures table dimensions, position, and margins during document analysis
+2. **Metadata Storage** - Stores coordinate information for each table with placeholders
+3. **PDF Coordinate Conversion** - Converts Word measurements to PDF points during overlay
+4. **Precise Positioning** - Uses calculated coordinates for exact overlay placement
+
+### Detection Process
+
+```text
+� Stored coordinate metadata for table 0
+🎯 Using Word-to-PDF coordinate mapping for table 0
+🔄 Converting Word coordinates to PDF coordinates...
+� Word table: 7.50" x 4.00" = 540.0 x 288.0 points
+📍 Calculated position: margin(90.0) + indent(0.0) = x:90.0
+� Y position: marker_top(114.2) - padding(10) = y:104.2
+✅ Converted Word coordinates to PDF coordinates
+```
+
+### Coordinate Conversion Features
+
+- **Dimension Mapping** - Converts Word table dimensions (inches) to PDF points (1" = 72 points)
+- **Position Calculation** - Accounts for Word document margins and table indentation
+- **Absolute Positioning** - Supports tables with explicit positioning in Word
+- **Margin Awareness** - Uses standard Word margins (1.25" left/right) for accurate placement
+- **Fallback Support** - Falls back to table detection methods if coordinate mapping fails
+
+### Benefits
+
+- **Pixel-Perfect Placement** - Overlays positioned exactly where the table appears in Word
+- **Consistent Scaling** - PDF content scaled to match Word table dimensions precisely
+- **Document Fidelity** - Maintains the exact layout intended in the original Word document
+- **Robust Conversion** - Handles various Word table positioning scenarios
 
 ## License
 
