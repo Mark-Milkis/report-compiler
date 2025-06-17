@@ -6,11 +6,7 @@ import os
 import time
 from typing import Optional
 from ..core.config import Config
-
-try:
-    import win32com.client
-except ImportError:
-    win32com = None
+from ..utils.logging_config import get_logger
 
 
 class WordConverter:
@@ -19,6 +15,7 @@ class WordConverter:
     def __init__(self):
         self.word_app = None
         self.is_connected = False
+        self.logger = get_logger()
     
     def connect(self) -> bool:
         """
@@ -36,7 +33,7 @@ class WordConverter:
             # Try to connect to existing Word instance first
             try:
                 self.word_app = win32com.client.GetActiveObject("Word.Application")
-                print("    ✓ Connected to existing Word instance")
+                self.logger.debug("Connected to existing Word instance")
                 self.is_connected = True
                 return True
             except:
@@ -45,12 +42,12 @@ class WordConverter:
             # If no existing instance, create new one
             self.word_app = win32com.client.Dispatch("Word.Application")
             self.word_app.Visible = False  # Run in background
-            print("    ✓ Created new Word instance")
+            self.logger.debug("Created new Word instance")
             self.is_connected = True
             return True
             
         except Exception as e:
-            print(f"    ❌ Failed to connect to Word: {e}")
+            self.logger.error(f"Failed to connect to Word: {e}", exc_info=True)
             self.is_connected = False
             return False
     
@@ -75,45 +72,49 @@ class WordConverter:
         
         doc: Optional[object] = None
         try:
-            print("    Converting DOCX to PDF...")
-            print(f"    Input: {docx_path}")
-            print(f"    Output: {pdf_path}")
+            self.logger.info("Converting DOCX to PDF with bookmark generation")
+            self.logger.debug(f"Input: {docx_path}")
+            self.logger.debug(f"Output: {pdf_path}")
             
             # Ensure output directory exists
             os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
             
             # Open the document
-            print(f"    Opening document: {os.path.basename(docx_path)}")
+            self.logger.debug(f"Opening document: {os.path.basename(docx_path)}")
             doc = self.word_app.Documents.Open(docx_path)
             
             # Wait a moment for document to fully load
             time.sleep(0.5)
-              # Export to PDF
-            print(f"    Exporting to PDF: {os.path.basename(pdf_path)}")
+            
+            # Export to PDF with bookmark generation
+            self.logger.debug(f"Exporting to PDF: {os.path.basename(pdf_path)}")
             doc.ExportAsFixedFormat(
                 OutputFileName=pdf_path,
                 ExportFormat=Config.WORD_EXPORT_FORMAT,  # PDF format
                 OpenAfterExport=False,
-                OptimizeFor=0,  # Print optimization
+                OptimizeFor=0,  # Print optimization - wdExportOptimizeForPrint
+                Range=0,       # Export entire document - wdExportAllDocument
+                Item=0,        # Export document content - wdExportDocumentContent
+                CreateBookmarks=1,  # Create bookmarks from headings - wdExportCreateHeadingBookmarks
+                DocStructureTags=True, # Create document structure tags for accessibility
                 BitmapMissingFonts=True,
-                DocStructureTags=False,
-                CreateBookmarks=False
+                UseISO19005_1=False # PDF/A compatibility, can be restrictive
             )
             
-            print(f"    ✓ Successfully converted '{os.path.basename(docx_path)}' to PDF")
+            self.logger.info(f"Successfully converted '{os.path.basename(docx_path)}' to PDF with bookmarks")
             return True
             
         except Exception as e:
-            print(f"    ❌ Error converting to PDF: {e}")
+            self.logger.error(f"Error converting DOCX to PDF: {e}", exc_info=True)
             return False
             
         finally:
             if doc is not None:
                 try:
                     doc.Close(SaveChanges=False)
-                    print("    ✓ Document closed")
-                except Exception:
-                    pass
+                    self.logger.debug("Document closed")
+                except Exception as e:
+                    self.logger.warning(f"Error closing document: {e}")
     
     def disconnect(self) -> None:
         """Disconnect from Word application."""
@@ -122,8 +123,9 @@ class WordConverter:
                 # Don't quit Word - might be used by other processes
                 self.word_app = None
                 self.is_connected = False
-            except:
-                pass
+                self.logger.debug("Disconnected from Word")
+            except Exception as e:
+                self.logger.warning(f"Error disconnecting from Word: {e}")
     
     def __enter__(self):
         """Context manager entry."""

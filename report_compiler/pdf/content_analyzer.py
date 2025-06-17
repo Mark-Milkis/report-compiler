@@ -5,13 +5,14 @@ PDF content analysis and cropping utilities.
 from typing import Optional, Dict, Any
 import fitz  # PyMuPDF
 from ..core.config import Config
+from ..utils.logging_config import get_module_logger
 
 
 class ContentAnalyzer:
     """Handles PDF content detection and cropping operations."""
     
     def __init__(self):
-        pass
+        self.logger = get_module_logger(__name__)
     
     def get_content_bbox(self, pdf_page: fitz.Page) -> Optional[fitz.Rect]:
         """
@@ -69,7 +70,7 @@ class ContentAnalyzer:
                 pass
         
         except Exception as e:
-            print(f"        ⚠️ Error detecting content bbox: {e}")
+            self.logger.warning("        ⚠️ Error detecting content bbox: %s", e)
             return None
         
         return content_bbox
@@ -91,7 +92,8 @@ class ContentAnalyzer:
             padding = Config.DEFAULT_PADDING
             
         if not crop_enabled:
-            print(f"        📐 Content cropping disabled, using full page ({pdf_page.rect.width / 72:.2f} x {pdf_page.rect.height / 72:.2f} inches)")
+            self.logger.info("        📐 Content cropping disabled, using full page (%.2f x %.2f inches)", 
+                           pdf_page.rect.width / 72, pdf_page.rect.height / 72)
             return pdf_page.rect
         
         content_bbox = self.get_content_bbox(pdf_page)
@@ -114,21 +116,24 @@ class ContentAnalyzer:
                 padded_bbox.x1 / 72, padded_bbox.y1 / 72
             )
             page_size_inches = (pdf_page.rect.width / 72, pdf_page.rect.height / 72)
-            
-            print(f"        📐 Padded content area: ({padded_bbox_inches[0]:.2f}, {padded_bbox_inches[1]:.2f}) to ({padded_bbox_inches[2]:.2f}, {padded_bbox_inches[3]:.2f}) inches with {padding}pt padding")
-            print(f"        📐 Original page: {page_size_inches[0]:.2f} x {page_size_inches[1]:.2f} inches")
+            self.logger.info("        📐 Padded content area: (%.2f, %.2f) to (%.2f, %.2f) inches with %dpt padding",
+                           padded_bbox_inches[0], padded_bbox_inches[1], 
+                           padded_bbox_inches[2], padded_bbox_inches[3], padding)
+            self.logger.info("        📐 Original page: %.2f x %.2f inches", 
+                           page_size_inches[0], page_size_inches[1])
             
             original_area = pdf_page.rect.width * pdf_page.rect.height
             cropped_area = padded_bbox.width * padded_bbox.height
             if original_area > 0:
                 savings_percentage = (original_area - cropped_area) / original_area * 100
-                print(f"        📐 Using content-aware cropping (saves {savings_percentage:.1f}% space after padding)")
+                self.logger.info("        📐 Using content-aware cropping (saves %.1f%% space after padding)", 
+                                savings_percentage)
             else:
-                print(f"        📐 Using content-aware cropping (original page area is zero)")
+                self.logger.info("        📐 Using content-aware cropping (original page area is zero)")
 
             return padded_bbox
         else:
-            print(f"        📐 No content detected or empty bbox, using full page")
+            self.logger.info("        📐 No content detected or empty bbox, using full page")
             return pdf_page.rect
     
     def detect_annotations(self, pdf_doc: fitz.Document) -> Dict[str, any]:
@@ -180,7 +185,8 @@ class ContentAnalyzer:
         annotation_info = self.detect_annotations(pdf_doc)
         
         if annotation_info['has_annotations']:
-            print(f"        📝 Found {annotation_info['total_annotations']} annotation(s), baking into content...")
+            self.logger.info("        📝 Found %d annotation(s), baking into content...", 
+                           annotation_info['total_annotations'])
             
             # Bake annotations into the content
             for page_num in range(len(pdf_doc)):
@@ -189,8 +195,8 @@ class ContentAnalyzer:
                 # This applies all annotations to the page content
                 page.apply_redactions()
             
-            print(f"        ✓ Annotations baked into PDF content")
+            self.logger.info("        ✓ Annotations baked into PDF content")
             return True
         else:
-            print(f"        📝 No annotations found in PDF")
+            self.logger.info("        📝 No annotations found in PDF")
             return False
