@@ -37,8 +37,6 @@ Placeholder Types:
 Features:
   • Content-aware cropping with border preservation
   • Multi-page overlay support with automatic table replication
-  • Advanced marker removal without artifacts
-  • Annotation baking to preserve PDF markup
   • Comprehensive validation and error reporting
         """)
     
