@@ -222,14 +222,13 @@ class ReportCompiler:
         
         # Get table metadata from DocxProcessor
         table_metadata = self.docx_processor.get_table_metadata()
-        
-        # Process overlays first
+          # Process overlays first
         overlay_placeholders = self.placeholders.get('table', [])
         if overlay_placeholders:
             print(f"   📦 Processing {len(overlay_placeholders)} overlay insertions...")
             success = self.overlay_processor.process_overlays(
                 self.temp_pdf_path, overlay_placeholders, 
-                self.output_path, table_metadata)
+                table_metadata, self.output_path)
             if not success:
                 print("❌ Overlay processing failed")
                 return False
