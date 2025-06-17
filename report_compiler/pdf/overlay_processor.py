@@ -236,12 +236,21 @@ class OverlayProcessor:
             
             # Create transformation matrix
             transform = fitz.Matrix(scale, scale).pretranslate(translate_x, translate_y)
-            
-            # Show the source page on the base page with transformation
-            base_page.show_pdf_page(overlay_rect, source_page.parent, source_page.number, 
-                                   clip=crop_rect, matrix=transform)
+              # Show the source page on the base page with transformation
+            try:
+                # Try with matrix parameter (newer PyMuPDF versions)
+                base_page.show_pdf_page(overlay_rect, source_page.parent, source_page.number, 
+                                       clip=crop_rect, matrix=transform)
+            except TypeError:
+                # Fallback for older PyMuPDF versions without matrix parameter
+                base_page.show_pdf_page(overlay_rect, source_page.parent, source_page.number, 
+                                       clip=crop_rect)
             
         except Exception as e:
             print(f"        ⚠️ Error overlaying content: {e}")
             # Fallback: simple overlay without transformation
-            base_page.show_pdf_page(overlay_rect, source_page.parent, source_page.number)
+            try:
+                base_page.show_pdf_page(overlay_rect, source_page.parent, source_page.number)
+            except Exception as fallback_error:
+                print(f"        ⚠️ Fallback also failed: {fallback_error}")
+                return False
