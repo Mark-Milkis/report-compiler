@@ -137,17 +137,8 @@ class MergeProcessor:
             page = base_doc[page_index]
             
             # Check if marker exists on this page
-            marker_info = self.marker_remover.find_marker_position(page, marker)
-            if marker_info:
-                print(f"      ✓ Found marker on page {page_index + 1}")
-                print(f"      🧹 Removing marker from page {page_index + 1}")
-                
-                # Remove the marker
-                if self.marker_remover.remove_marker_text(page, marker):
-                    print(f"      ✓ Marker removed from page {page_index + 1}")
-                else:
-                    print(f"      ⚠️ Could not remove marker from page {page_index + 1}")
-                
+            if self.marker_remover.remove_marker_text(page, marker):
+                print(f"      ✓ Found and removed marker on page {page_index + 1}")
                 return page_index
         
         return None
