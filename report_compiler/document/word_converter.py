@@ -4,6 +4,7 @@ Word automation for DOCX to PDF conversion.
 
 import os
 import time
+import win32com.client
 from typing import Optional
 from ..core.config import Config
 from ..utils.logging_config import get_logger
@@ -25,7 +26,7 @@ class WordConverter:
             bool: True if connection successful, False otherwise
         """
         if win32com is None:
-            print("    ❌ pywin32 is not installed. Word automation is unavailable on this platform.")
+            self.logger.error("pywin32 is not installed. Word automation is unavailable on this platform.")
             self.is_connected = False
             return False
         
@@ -63,7 +64,7 @@ class WordConverter:
             bool: True if conversion successful, False otherwise
         """
         if win32com is None:
-            print("    ❌ pywin32 is not installed. Cannot convert DOCX to PDF using Word automation.")
+            self.logger.error("pywin32 is not installed. Cannot convert DOCX to PDF using Word automation.")
             return False
         
         if not self.is_connected:
