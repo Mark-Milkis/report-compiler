@@ -24,8 +24,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/report_compiler.py",
             "args": [
-                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
-                "${workspaceFolder}/examples/simple-report/debug_output.pdf",
+                "${workspaceFolder}/examples/parsons-report/parsons-report.docx",
+                "${workspaceFolder}/examples/parsons-report/debug_output.pdf",
+
                 "--keep-temp"
             ],
             "console": "integratedTerminal",
