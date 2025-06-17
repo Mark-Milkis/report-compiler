@@ -207,8 +207,7 @@ class Validators:
             'warnings': [],
             'total_placeholders': len(placeholders),
             'overlay_count': 0,
-            'merge_count': 0
-        }
+            'merge_count': 0        }
         
         overlay_paths = []
         merge_paths = []
@@ -216,10 +215,10 @@ class Validators:
         for placeholder in placeholders:
             if placeholder.get('type') == 'overlay':
                 result['overlay_count'] += 1
-                overlay_paths.append(placeholder.get('path', ''))
+                overlay_paths.append(placeholder.get('pdf_path_raw', ''))
             elif placeholder.get('type') == 'merge':
                 result['merge_count'] += 1
-                merge_paths.append(placeholder.get('path', ''))
+                merge_paths.append(placeholder.get('pdf_path_raw', ''))
         
         # Check for duplicate paths
         all_paths = overlay_paths + merge_paths
