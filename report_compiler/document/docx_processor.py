@@ -132,44 +132,61 @@ class DocxProcessor:
                 else:
                     # Single page - just replace with marker
                     cell = table.rows[0].cells[0]
-                    # Clear cell and add marker
-                    cell.text = ""
-                    if cell.paragraphs:
-                        for paragraph in cell.paragraphs:
-                            paragraph.clear()
-                    marker = Config.get_overlay_marker(table_idx)
-                    cell.add_paragraph(marker)
+                    marker_text = Config.get_overlay_marker(table_idx)
+                    
+                    cell.text = "" # Clear all content, including paragraphs
+                    # Get the first paragraph or add one if none exist
+                    paragraph = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+                    # The legacy code also sets alignment here. If needed, add:
+                    # from docx.enum.text import WD_ALIGN_PARAGRAPH
+                    # paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    paragraph.add_run(marker_text)
                 
                 print(f"         ✅ Table {table_idx} updated with overlay marker and dimensions")
-            else:                print(f"         ⚠️ Table index {table_idx} out of range")
+            else:
+                print(f"         ⚠️ Table index {table_idx} out of range")
     
     def _replicate_table_cells(self, table, table_idx: int, page_count: int) -> None:
         """Replicate table cells for multi-page overlays."""
         # First cell gets the main marker
         first_cell = table.rows[0].cells[0]
-        main_marker = Config.get_overlay_marker(table_idx)
-        first_cell.text = ""
-        if first_cell.paragraphs:
-            for paragraph in first_cell.paragraphs:
-                paragraph.clear()
-        first_cell.add_paragraph(main_marker)
+        main_marker_text = Config.get_overlay_marker(table_idx)
+        
+        first_cell.text = "" # Clear all content
+        # Get the first paragraph or add one if none exist
+        paragraph = first_cell.paragraphs[0] if first_cell.paragraphs else first_cell.add_paragraph()
+        # The legacy code also sets alignment here. If needed, add:
+        # from docx.enum.text import WD_ALIGN_PARAGRAPH
+        # paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        paragraph.add_run(main_marker_text)
         
         # Add additional rows for each additional page
         created_cells = 0
         for page_num in range(2, page_count + 1):
             # Add a new row
             new_row = table.add_row()
+            
+            # Attempt to set row height to match the original first row's height
+            try:
+                if table.rows[0].height is not None:
+                    new_row.height = table.rows[0].height
+            except Exception as e:
+                print(f"           ⚠️ Could not set row height for replicated cell (table_idx: {table_idx}, row: {page_num}): {e}")
+                pass # Continue without setting height, similar to legacy try-except pass
+
             new_cell = new_row.cells[0]
             
             # Set marker for this page
-            page_marker = Config.get_overlay_marker(table_idx, page_num)
-            new_cell.text = ""
-            if new_cell.paragraphs:
-                for paragraph in new_cell.paragraphs:
-                    paragraph.clear()
-            new_cell.add_paragraph(page_marker)
+            page_marker_text = Config.get_overlay_marker(table_idx, page_num)
+            new_cell.text = "" # Clear all content
+            # Get the first paragraph or add one if none exist
+            paragraph_repl = new_cell.paragraphs[0] if new_cell.paragraphs else new_cell.add_paragraph()
+            # The legacy code also sets alignment here. If needed, add:
+            # from docx.enum.text import WD_ALIGN_PARAGRAPH
+            # paragraph_repl.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            paragraph_repl.add_run(page_marker_text)
             
-            print(f"           ✅ Created table row {page_num} with marker: {page_marker}")
+            print(f"           ✅ Created table row {page_num} with marker: {page_marker_text}")
             created_cells += 1
         
         print(f"         ✅ Created {created_cells} additional cells")
