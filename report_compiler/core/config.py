@@ -31,7 +31,7 @@ class Config:
     WORD_EXPORT_FORMAT = 17  # PDF format in Word
     
     # Rendering engine selection: 'word' or 'libreoffice'
-    DOCX_RENDER_ENGINE = 'libreoffice'  # Options: 'word', 'libreoffice'
+    DOCX_RENDER_ENGINE = 'word'  # Options: 'word', 'libreoffice'
     LIBREOFFICE_EXECUTABLE = 'libreoffice'  # Path to LibreOffice executable
     
     # Logging settings
