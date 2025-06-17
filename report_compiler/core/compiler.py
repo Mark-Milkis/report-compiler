@@ -6,6 +6,7 @@ report compilation process, from input validation through PDF generation.
 """
 
 import os
+import sys
 from typing import Dict, Any
 
 from ..utils.file_manager import FileManager
@@ -14,6 +15,7 @@ from ..document.placeholder_parser import PlaceholderParser
 from ..pdf.content_analyzer import ContentAnalyzer
 from ..document.docx_processor import DocxProcessor
 from ..document.word_converter import WordConverter
+from ..document.libreoffice_converter import LibreOfficeConverter
 from ..pdf.overlay_processor import OverlayProcessor
 from ..pdf.merge_processor import MergeProcessor
 from ..pdf.marker_remover import MarkerRemover
@@ -41,7 +43,11 @@ class ReportCompiler:
         self.placeholder_parser = PlaceholderParser()
         self.content_analyzer = ContentAnalyzer()
         self.docx_processor = DocxProcessor(input_path)
-        self.word_converter = WordConverter()
+        if sys.platform == 'win32':
+            self.word_converter = WordConverter()
+        else:
+            self.word_converter = None
+        self.libreoffice_converter = LibreOfficeConverter()
         self.overlay_processor = OverlayProcessor()
         self.merge_processor = MergeProcessor()
         self.marker_remover = MarkerRemover()

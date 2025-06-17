@@ -4,9 +4,13 @@ Word automation for DOCX to PDF conversion.
 
 import os
 import time
-import win32com.client
 from typing import Optional
 from ..core.config import Config
+
+try:
+    import win32com.client
+except ImportError:
+    win32com = None
 
 
 class WordConverter:
@@ -23,6 +27,11 @@ class WordConverter:
         Returns:
             bool: True if connection successful, False otherwise
         """
+        if win32com is None:
+            print("    ❌ pywin32 is not installed. Word automation is unavailable on this platform.")
+            self.is_connected = False
+            return False
+        
         try:
             # Try to connect to existing Word instance first
             try:
@@ -47,7 +56,7 @@ class WordConverter:
     
     def convert_to_pdf(self, docx_path: str, pdf_path: str) -> bool:
         """
-        Convert DOCX file to PDF using Word automation.
+        Convert DOCX file to PDF using the configured rendering engine.
         
         Args:
             docx_path: Path to input DOCX file
@@ -56,11 +65,15 @@ class WordConverter:
         Returns:
             bool: True if conversion successful, False otherwise
         """
+        if win32com is None:
+            print("    ❌ pywin32 is not installed. Cannot convert DOCX to PDF using Word automation.")
+            return False
+        
         if not self.is_connected:
             if not self.connect():
                 return False
         
-        doc = None
+        doc: Optional[object] = None
         try:
             print("    Converting DOCX to PDF...")
             print(f"    Input: {docx_path}")
@@ -95,12 +108,11 @@ class WordConverter:
             return False
             
         finally:
-            # Close the document
-            if doc:
+            if doc is not None:
                 try:
                     doc.Close(SaveChanges=False)
                     print("    ✓ Document closed")
-                except:
+                except Exception:
                     pass
     
     def disconnect(self) -> None:
