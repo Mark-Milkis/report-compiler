@@ -51,6 +51,9 @@ debug_*.pdf
 *_debug.pdf
 test_*.pdf
 
+# Legacy files
+# report_compiler_legacy.py  # Original monolithic implementation (kept for reference)
+
 # Word temporary files
 ~$*.doc*
 
