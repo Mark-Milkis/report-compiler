@@ -20,6 +20,7 @@ from ..pdf.overlay_processor import OverlayProcessor
 from ..pdf.merge_processor import MergeProcessor
 from ..pdf.marker_remover import MarkerRemover
 from ..utils.logging_config import get_compiler_logger
+from ..core.config import Config
 
 
 class ReportCompiler:
@@ -45,10 +46,7 @@ class ReportCompiler:
         self.placeholder_parser = PlaceholderParser()
         self.content_analyzer = ContentAnalyzer()
         self.docx_processor = DocxProcessor(input_path)
-        if sys.platform == 'win32':
-            self.word_converter = WordConverter()
-        else:
-            self.word_converter = None
+        self.word_converter = WordConverter()
         self.libreoffice_converter = LibreOfficeConverter()
         self.overlay_processor = OverlayProcessor()
         self.merge_processor = MergeProcessor()
@@ -208,18 +206,21 @@ class ReportCompiler:
     def _convert_to_pdf(self) -> bool:
         """Convert modified DOCX to PDF."""
         self.logger.info("Step 4: Converting modified document to PDF...")
-        
         self.logger.info("🔄 PHASE 3: Converting to PDF...")
-        
-        # Use WordConverter to convert to PDF
-        success = self.word_converter.convert_to_pdf(
-            self.temp_docx_path, self.temp_pdf_path)
-        
+
+        # Use the configured rendering engine
+        if Config.DOCX_RENDER_ENGINE == 'libreoffice':
+            success = self.libreoffice_converter.convert_to_pdf(
+                self.temp_docx_path, self.temp_pdf_path)
+        else:
+            success = self.word_converter.convert_to_pdf(
+                self.temp_docx_path, self.temp_pdf_path)
+
         if success:
             self.logger.info("✓ PDF conversion successful: %s", self.temp_pdf_path)
         else:
             self.logger.error("❌ PDF conversion failed")
-        
+
         return success
     
     def _process_pdf_insertions(self) -> bool:
