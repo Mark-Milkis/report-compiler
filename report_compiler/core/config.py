@@ -3,7 +3,7 @@ Configuration and constants for the report compiler.
 """
 
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class Config:
@@ -30,6 +30,10 @@ class Config:
     # Word automation settings
     WORD_EXPORT_FORMAT = 17  # PDF format in Word
     
+    # Rendering engine selection: 'word' or 'libreoffice'
+    DOCX_RENDER_ENGINE = 'libreoffice'  # Options: 'word', 'libreoffice'
+    LIBREOFFICE_EXECUTABLE = 'libreoffice'  # Path to LibreOffice executable
+    
     # Logging settings
     LOG_ICONS = {
         'search': '🔍',
@@ -51,7 +55,7 @@ class Config:
     }
     
     @classmethod
-    def get_overlay_marker(cls, table_index: int, page_num: int = None) -> str:
+    def get_overlay_marker(cls, table_index: int, page_num: Optional[int] = None) -> str:
         """Generate overlay marker string."""
         if page_num is None:
             return f"{cls.OVERLAY_MARKER_PREFIX}{table_index:02d}%%"

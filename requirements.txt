@@ -1,5 +1,6 @@
 comtypes
-pywin32
+# pywin32 is only needed on Windows for Word automation
+pywin32; platform_system == "Windows"
 tqdm
 pymupdf
 python-docx
