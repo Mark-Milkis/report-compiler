@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Any, Optional
 from docx import Document
 from ..core.config import Config
+from ..utils.logging_config import get_module_logger
 
 
 class PlaceholderParser:
@@ -14,6 +15,7 @@ class PlaceholderParser:
     def __init__(self):
         self.overlay_regex = Config.OVERLAY_REGEX
         self.insert_regex = Config.INSERT_REGEX
+        self.logger = get_module_logger(__name__)
         
         # Cache for document parsing
         self._doc = None
@@ -69,19 +71,18 @@ class PlaceholderParser:
                     match = self.overlay_regex.search(cell_text)
                     if match:
                         pdf_path_raw = match.group(1).strip()
-                        params_string = match.group(2)
-                        
+                        params_string = match.group(2)                        
                         # Parse parameters
                         params = self._parse_overlay_parameters(params_string)
                         
-                        print(f"   📋 Found table OVERLAY placeholder #{len(placeholders)+1}:")
-                        print(f"      • Raw path: {pdf_path_raw}")
+                        self.logger.info("   📋 Found table OVERLAY placeholder #%d:", len(placeholders)+1)
+                        self.logger.info("      • Raw path: %s", pdf_path_raw)
                         if params['page']:
-                            print(f"      • Page specification: page={params['page']}")
-                        print(f"      • Content cropping: {'enabled' if params['crop'] else 'disabled'}")
-                        print(f"      • Table index: {table_idx}")
-                        print(f"      • Table type: Single-cell (1x1)")
-                        print(f"      • Cell text: '{cell_text}'")
+                            self.logger.info("      • Page specification: page=%s", params['page'])
+                        self.logger.info("      • Content cropping: %s", 'enabled' if params['crop'] else 'disabled')
+                        self.logger.info("      • Table index: %d", table_idx)
+                        self.logger.info("      • Table type: Single-cell (1x1)")
+                        self.logger.info("      • Cell text: '%s'", cell_text)
                         
                         # Get table dimensions
                         dimensions = self._get_table_dimensions(table, table_idx)
@@ -100,16 +101,15 @@ class PlaceholderParser:
                         if dimensions:
                             table_info.update(dimensions)
                             if 'width_inches' in dimensions and 'height_inches' in dimensions:
-                                print(f"      • Dimensions: {dimensions['width_inches']:.2f}\\\" x {dimensions['height_inches']:.2f}\\\"")
+                                self.logger.info("      • Dimensions: %.2f\" x %.2f\"", dimensions['width_inches'], dimensions['height_inches'])
                             else:
-                                print(f"      • Dimensions: {dimensions}")
+                                self.logger.info("      • Dimensions: %s", dimensions)
                         else:
-                            print(f"      • ⚠️ Could not determine table dimensions")
+                            self.logger.warning("      • ⚠️ Could not determine table dimensions")
                         
                         placeholders.append(table_info)
                 
-                else:
-                    # Multi-cell tables: scan but don't classify as overlay
+                else:                    # Multi-cell tables: scan but don't classify as overlay
                     has_insert = False
                     for row in table.rows:
                         for cell in row.cells:
@@ -121,12 +121,12 @@ class PlaceholderParser:
                             break
                     
                     if has_insert:
-                        print(f"   ⚠️  Multi-cell table #{table_idx} ({rows}x{cols}) contains placeholder but skipped (not overlay type)")
+                        self.logger.warning("   ⚠️  Multi-cell table #%d (%dx%d) contains placeholder but skipped (not overlay type)", table_idx, rows, cols)
         
         except Exception as e:
-            print(f"   ❌ Error scanning for table placeholders: {e}")
+            self.logger.error("   ❌ Error scanning for table placeholders: %s", e, exc_info=True)
         
-        print(f"   ✅ Found {len(placeholders)} table placeholders")
+        self.logger.info("   ✅ Found %d table placeholders", len(placeholders))
         return placeholders
     
     def _find_paragraph_placeholders(self) -> List[Dict]:
@@ -146,13 +146,12 @@ class PlaceholderParser:
                 match = self.insert_regex.search(para_text)
                 if match:
                     pdf_path_raw = match.group(1).strip()
-                    page_spec = match.group(2)  # Optional page specification
-                    
-                    print(f"   📄 Found paragraph INSERT placeholder #{len(placeholders)+1}:")
-                    print(f"      • Raw path: {pdf_path_raw}")
+                    page_spec = match.group(2)  # Optional page specification                    
+                    self.logger.info("   📄 Found paragraph INSERT placeholder #%d:", len(placeholders)+1)
+                    self.logger.info("      • Raw path: %s", pdf_path_raw)
                     if page_spec:
-                        print(f"      • Page specification: {page_spec}")
-                    print(f"      • Paragraph index: {para_idx}")
+                        self.logger.info("      • Page specification: %s", page_spec)
+                    self.logger.info("      • Paragraph index: %d", para_idx)
                     
                     placeholder_info = {
                         'type': 'merge',
@@ -167,9 +166,9 @@ class PlaceholderParser:
                     placeholders.append(placeholder_info)
         
         except Exception as e:
-            print(f"   ❌ Error scanning for paragraph placeholders: {e}")
+            self.logger.error("   ❌ Error scanning for paragraph placeholders: %s", e, exc_info=True)
         
-        print(f"   ✅ Found {len(placeholders)} paragraph placeholders")
+        self.logger.info("   ✅ Found %d paragraph placeholders", len(placeholders))
         return placeholders
     
     def _parse_overlay_parameters(self, params_string: Optional[str]) -> Dict[str, Any]:
@@ -261,14 +260,13 @@ class PlaceholderParser:
                     dimensions['row_height_inches'] = height_inches
             except:
                 pass
-            
-            # Store coordinate metadata for later use
-            print(f"      📍 Stored coordinate metadata for table {table_idx}")
+              # Store coordinate metadata for later use
+            self.logger.debug("      📍 Stored coordinate metadata for table %d", table_idx)
             if dimensions:
-                print(f"      • Dimensions: {dimensions}")
+                self.logger.debug("      • Dimensions: %s", dimensions)
             
             return dimensions if dimensions else None
             
         except Exception as e:
-            print(f"      ⚠️ Error extracting table dimensions: {e}")
+            self.logger.warning("      ⚠️ Error extracting table dimensions: %s", e)
             return None

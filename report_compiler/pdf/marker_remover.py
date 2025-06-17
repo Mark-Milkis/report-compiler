@@ -4,13 +4,14 @@ Marker removal utilities for PDF processing using redaction.
 
 import fitz  # PyMuPDF
 from typing import Dict, Optional
+from ..utils.logging_config import get_module_logger
 
 
 class MarkerRemover:
     """Handles clean removal of marker text from PDF pages using redaction."""
 
     def __init__(self):
-        pass
+        self.logger = get_module_logger(__name__)
 
     def remove_marker_text(self, page: fitz.Page, marker_text: str) -> bool:
         """
@@ -27,10 +28,11 @@ class MarkerRemover:
             # Find the marker text
             marker_rect = self._find_marker_rect(page, marker_text)
             if not marker_rect:
-                # print(f"        ⚠️ Marker '{marker_text}' not found on page.")
+                self.logger.debug("        ⚠️ Marker '%s' not found on page.", marker_text)
                 return False
 
-            print(f"        🎯 Applying redaction for marker text '{marker_text}' at ({marker_rect.x0:.1f}, {marker_rect.y0:.1f})")
+            self.logger.debug("        🎯 Applying redaction for marker text '%s' at (%.1f, %.1f)", 
+                            marker_text, marker_rect.x0, marker_rect.y0)
 
             # Add redaction annotation
             page.add_redact_annot(marker_rect)
@@ -41,7 +43,7 @@ class MarkerRemover:
             return True
             
         except Exception as e:
-            print(f"        ⚠️ Error removing marker: {e}")
+            self.logger.warning("        ⚠️ Error removing marker: %s", e)
             return False
 
     def _find_marker_rect(self, page: fitz.Page, marker_text: str) -> Optional[fitz.Rect]:
@@ -92,7 +94,6 @@ class MarkerRemover:
             }
             
             return position_info
-            
         except Exception as e: # It's good practice to log or print the exception
-            print(f"      ⚠️ Error in find_marker_position: {e}")
+            self.logger.warning("      ⚠️ Error in find_marker_position: %s", e)
             return None
