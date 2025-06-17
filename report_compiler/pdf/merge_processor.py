@@ -44,10 +44,13 @@ class MergeProcessor:
                     merge_idx = len(merge_placeholders) - idx + 1
                     if not self._process_single_merge(base_doc, placeholder, merge_idx):
                         return False
-                
-                # Save the PDF with merges
+                  # Save the PDF with merges
                 print(f"    Saving PDF with merges: {output_path}")
-                base_doc.save(output_path)
+                if base_pdf_path == output_path:
+                    # If saving to same file, use incremental save
+                    base_doc.saveIncr()
+                else:
+                    base_doc.save(output_path)
                 print(f"    ✓ PDF with merges saved successfully")
             
             print("   ✓ Merge processing complete")
