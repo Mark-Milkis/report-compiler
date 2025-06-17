@@ -1,10 +1,11 @@
 {
     "version": "0.2.0",
-    "configurations": [        {
+    "configurations": [
+        {
             "name": "Debug Report Compiler - Example File",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${workspaceFolder}/examples/simple-report/bridge_report.docx",
                 "${workspaceFolder}/examples/simple-report/debug_output.pdf"
@@ -17,16 +18,14 @@
             },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
-        },
-        {
+        },        {
             "name": "Debug Report Compiler - Example File (Keep Temp)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${workspaceFolder}/examples/parsons-report/parsons-report.docx",
                 "${workspaceFolder}/examples/parsons-report/debug_output.pdf",
-
                 "--keep-temp"
             ],
             "console": "integratedTerminal",
@@ -37,12 +36,11 @@
             },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
-        },
-        {
+        },        {
             "name": "Debug Report Compiler - Custom Input",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${input:docxFile}",
                 "${input:outputPdf}"
@@ -59,7 +57,7 @@
             "name": "Debug Report Compiler - Step Into All Code",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${workspaceFolder}/examples/simple-report/bridge_report.docx",
                 "${workspaceFolder}/examples/simple-report/debug_detailed.pdf",
@@ -73,50 +71,32 @@
             },
             "justMyCode": false,
             "python": "${command:python.interpreterPath}"
-        },
-        {
-            "name": "Debug Report Compiler - No Placeholders Test",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
-            "args": [
-                "${workspaceFolder}/examples/simple-report/parsons_sample.docx",
-                "${workspaceFolder}/examples/simple-report/no_placeholders_debug.pdf"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "stopOnEntry": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "justMyCode": true,
-            "python": "${command:python.interpreterPath}"
-        },
-        {
-            "name": "Debug Report Compiler - Main Function Only",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
-            "args": [
-                "--help"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "stopOnEntry": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "justMyCode": true,
-            "python": "${command:python.interpreterPath}"
-        },
-        {
+        },        {
             "name": "Debug Report Compiler - Error Testing",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/report_compiler.py",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "nonexistent_file.docx",
                 "test_error.pdf"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": true,
+            "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "Debug Legacy Report Compiler - Cross-Check",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/report_compiler_legacy.py",
+            "args": [
+                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
+                "${workspaceFolder}/examples/simple-report/legacy_debug_output.pdf"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
