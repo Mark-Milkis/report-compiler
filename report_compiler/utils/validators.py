@@ -3,7 +3,7 @@ Validation utilities for file paths and PDF documents.
 """
 
 import os
-from pathlib import Path
+import pathlib
 from typing import Dict, List, Optional, Tuple
 import fitz  # PyMuPDF
 from ..core.config import Config
@@ -33,6 +33,8 @@ class Validators:
         }
         
         try:
+            # Normalize path separators for cross-platform compatibility
+            pdf_path = pdf_path.replace("\\", os.sep).replace("/", os.sep)
             # Try to resolve the path
             if os.path.isabs(pdf_path):
                 resolved_path = pdf_path

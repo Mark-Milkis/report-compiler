@@ -4,10 +4,14 @@ Word automation for DOCX to PDF conversion.
 
 import os
 import time
-import win32com.client
 from typing import Optional
 from ..core.config import Config
 from ..utils.logging_config import get_logger
+
+try:
+    import win32com.client
+except ImportError:
+    win32com = None
 
 
 class WordConverter:
