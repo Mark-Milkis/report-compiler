@@ -19,8 +19,7 @@ class Config:
     PAGE_MARKER_SUFFIX = "_PAGE_"
     
     # PDF processing defaults
-    DEFAULT_PADDING = 16  # points
-    MIN_PADDING = 16  # points  
+    DEFAULT_PADDING = 32  # points
     DEFAULT_CROP_ENABLED = True
     
     # File handling
