@@ -7,6 +7,7 @@ import shutil
 from typing import Dict, List, Any, Optional
 from docx import Document
 from ..core.config import Config
+from ..utils.logging_config import get_docx_logger
 
 
 class DocxProcessor:
@@ -17,6 +18,7 @@ class DocxProcessor:
         self.doc = None
         self.placeholders = {}
         self.table_metadata = {}
+        self.logger = get_docx_logger()
     
     def load_document(self) -> None:
         """Load the DOCX document."""
@@ -39,9 +41,8 @@ class DocxProcessor:
                 self.load_document()
             
             self.placeholders = placeholders
-            
-            print("🔧 PHASE 2: Modifying document...")
-            print("🔧 Creating modified document...")
+            self.logger.info("🔧 PHASE 2: Modifying document...")
+            self.logger.info("🔧 Creating modified document...")
             
             # Process merge placeholders first (paragraph-based)
             if placeholders['paragraph']:
@@ -53,29 +54,28 @@ class DocxProcessor:
             
             # Save the modified document
             self.doc.save(output_path)
-            print("✅ Document modification complete")
+            self.logger.info("✅ Document modification complete")
             
             return True
             
         except Exception as e:
-            print(f"❌ Error creating modified document: {e}")
+            self.logger.error("❌ Error creating modified document: %s", e, exc_info=True)
             return False
     
     def _process_merge_placeholders(self) -> None:
         """Process paragraph-based merge placeholders."""
         merge_placeholders = self.placeholders['paragraph']
-        print(f"📄 Processing {len(merge_placeholders)} merge placeholders...")
+        self.logger.info("📄 Processing %d merge placeholders...", len(merge_placeholders))
         
         for idx, placeholder in enumerate(merge_placeholders, 1):
             page_count = placeholder.get('page_count', 0)
             para_idx = placeholder['paragraph_index']
-            
-            print(f"   📄 Processing merge placeholder #{idx}:")
-            print(f"      • Paragraph {para_idx}, {page_count} pages")
+            self.logger.info("   📄 Processing merge placeholder #%d:", idx)
+            self.logger.info("      • Paragraph %d, %d pages", para_idx, page_count)
             
             # Generate marker
             marker = Config.get_merge_marker(idx)
-            print(f"      • Marker: {marker}")
+            self.logger.info("      • Marker: %s", marker)
             
             # Find the paragraph and replace its content
             if para_idx < len(self.doc.paragraphs):
@@ -88,32 +88,34 @@ class DocxProcessor:
                 from docx.enum.text import WD_BREAK
                 paragraph.add_run().add_break(WD_BREAK.PAGE)
                 
-                print(f"      ✅ Added marker and page break (no placeholder pages)")
+                self.logger.info("      ✅ Added marker and page break (no placeholder pages)")
             else:
-                print(f"      ⚠️ Paragraph index {para_idx} out of range")
+                self.logger.warning("      ⚠️ Paragraph index %d out of range", para_idx)
     
     def _process_overlay_placeholders(self) -> None:
         """Process table-based overlay placeholders."""
         overlay_placeholders = self.placeholders['table']
-        print(f"📦 Processing {len(overlay_placeholders)} overlay placeholders...")
+        self.logger.info("📦 Processing %d overlay placeholders...", len(overlay_placeholders))
         
-        print(f"   📋 Table-based overlay placeholder processing:")
+        self.logger.info("   📋 Table-based overlay placeholder processing:")
         
         for idx, placeholder in enumerate(overlay_placeholders):
             table_idx = placeholder['table_index']
             page_count = placeholder.get('page_count', 1)
             
-            print(f"      • Processing table placeholder #{idx + 1}:")
-            print(f"         • Table {table_idx}, {page_count} pages")
+            self.logger.info("      • Processing table placeholder #%d:", idx + 1)
+            self.logger.info("         • Table %d, %d pages", table_idx, page_count)
             
             # Get stored table dimensions
             dimensions = self._extract_table_dimensions(placeholder)
-            print(f"         • Using stored table dimensions: {dimensions['width_inches']:.2f} x {dimensions['height_inches']:.2f} inches")
+            self.logger.info("         • Using stored table dimensions: %.2f x %.2f inches", 
+                           dimensions['width_inches'], dimensions['height_inches'])
             
             # Convert to points for PDF processing
             table_width_pts = dimensions['width_inches'] * 72
             table_height_pts = dimensions['height_inches'] * 72
-            print(f"         • Final table dimensions: {table_width_pts:.1f} x {table_height_pts:.1f} points = {dimensions['width_inches']:.2f} x {dimensions['height_inches']:.2f} inches")
+            self.logger.info("         • Final table dimensions: %.1f x %.1f points = %.2f x %.2f inches",
+                           table_width_pts, table_height_pts, dimensions['width_inches'], dimensions['height_inches'])
             
             # Store metadata for later use
             self.table_metadata[table_idx] = {
@@ -126,7 +128,7 @@ class DocxProcessor:
                 table = self.doc.tables[table_idx]
                 
                 if page_count > 1:
-                    print(f"         📋 Multi-page PDF detected ({page_count} pages), replicating cells...")
+                    self.logger.info("         📋 Multi-page PDF detected (%d pages), replicating cells...", page_count)
                     self._replicate_table_cells(table, table_idx, page_count)
                 else:
                     # Single page - just replace with marker
@@ -141,9 +143,9 @@ class DocxProcessor:
                     # paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     paragraph.add_run(marker_text)
                 
-                print(f"         ✅ Table {table_idx} updated with overlay marker and dimensions")
+                self.logger.info("         ✅ Table %d updated with overlay marker and dimensions", table_idx)
             else:
-                print(f"         ⚠️ Table index {table_idx} out of range")
+                self.logger.warning("         ⚠️ Table index %d out of range", table_idx)
     
     def _replicate_table_cells(self, table, table_idx: int, page_count: int) -> None:
         """Replicate table cells for multi-page overlays."""
@@ -170,7 +172,8 @@ class DocxProcessor:
                 if table.rows[0].height is not None:
                     new_row.height = table.rows[0].height
             except Exception as e:
-                print(f"           ⚠️ Could not set row height for replicated cell (table_idx: {table_idx}, row: {page_num}): {e}")
+                self.logger.warning("           ⚠️ Could not set row height for replicated cell (table_idx: %d, row: %d): %s", 
+                                  table_idx, page_num, e)
                 pass # Continue without setting height, similar to legacy try-except pass
 
             new_cell = new_row.cells[0]
@@ -185,10 +188,10 @@ class DocxProcessor:
             # paragraph_repl.alignment = WD_ALIGN_PARAGRAPH.LEFT
             paragraph_repl.add_run(page_marker_text)
             
-            print(f"           ✅ Created table row {page_num} with marker: {page_marker_text}")
+            self.logger.info("           ✅ Created table row %d with marker: %s", page_num, page_marker_text)
             created_cells += 1
         
-        print(f"         ✅ Created {created_cells} additional cells")
+        self.logger.info("         ✅ Created %d additional cells", created_cells)
     
     def _extract_table_dimensions(self, placeholder: Dict[str, Any]) -> Dict[str, float]:
         """Extract table dimensions from placeholder metadata."""
@@ -202,7 +205,7 @@ class DocxProcessor:
         else:
             # Default width if not found
             dimensions['width_inches'] = 7.5
-            print(f"         ⚠️ No width found, using default: {dimensions['width_inches']} inches")
+            self.logger.warning("         ⚠️ No width found, using default: %s inches", dimensions['width_inches'])
         
         # Try to get height
         if 'height_inches' in placeholder:
@@ -212,7 +215,7 @@ class DocxProcessor:
         else:
             # Default height if not found
             dimensions['height_inches'] = 4.0
-            print(f"         ⚠️ No height found, using default: {dimensions['height_inches']} inches")
+            self.logger.warning("         ⚠️ No height found, using default: %s inches", dimensions['height_inches'])
         
         return dimensions
     

@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 from ..core.config import Config
+from .logging_config import get_file_logger
 
 
 class FileManager:
@@ -17,6 +18,8 @@ class FileManager:
         self.keep_temp = keep_temp
         self.temp_files: List[str] = []
         self.timestamp = int(time.time() * 1000)  # Millisecond timestamp
+        self.logger = get_file_logger()
+        self.logger = get_file_logger()
     
     def generate_temp_path(self, base_path: str, suffix: str = "") -> str:
         """
@@ -51,8 +54,7 @@ class FileManager:
             suffix: Additional suffix for the temp file
             
         Returns:
-            Path to temporary copy
-        """
+            Path to temporary copy        """
         import shutil
         
         temp_path = self.generate_temp_path(source_path, suffix)
@@ -62,26 +64,26 @@ class FileManager:
     def cleanup(self) -> None:
         """Clean up all temporary files created by this manager."""
         if self.keep_temp:
-            print("Keeping temporary files for debugging...")
+            self.logger.info("Keeping temporary files for debugging...")
             for temp_file in self.temp_files:
                 if os.path.exists(temp_file):
-                    print(f"  • {os.path.basename(temp_file)}")
+                    self.logger.info("  • %s", os.path.basename(temp_file))
             return
         
-        print("Cleaning up temporary files...")
+        self.logger.info("Cleaning up temporary files...")
         removed_count = 0
         
         for temp_file in self.temp_files:
             try:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-                    print(f"  ✓ Removed: {os.path.basename(temp_file)}")
+                    self.logger.info("  ✓ Removed: %s", os.path.basename(temp_file))
                     removed_count += 1
             except Exception as e:
-                print(f"  ⚠️ Could not remove {os.path.basename(temp_file)}: {e}")
+                self.logger.warning("  ⚠️ Could not remove %s: %s", os.path.basename(temp_file), e)
         
         if removed_count == 0 and len(self.temp_files) > 0:
-            print("  • No temporary files to clean up")
+            self.logger.info("  • No temporary files to clean up")
         
         self.temp_files.clear()
     

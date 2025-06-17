@@ -8,6 +8,7 @@ import os
 from typing import Dict, List, Any, Optional
 from ..core.config import Config
 from ..utils.page_selector import PageSelector
+from ..utils.logging_config import get_merge_logger
 from .content_analyzer import ContentAnalyzer
 from .marker_remover import MarkerRemover
 
@@ -19,8 +20,9 @@ class MergeProcessor:
         self.page_selector = PageSelector()
         self.content_analyzer = ContentAnalyzer()
         self.marker_remover = MarkerRemover()
+        self.logger = get_merge_logger()
 
-    def _adjust_appendix_toc(self, appendix_toc_entries: list, 
+    def _adjust_appendix_toc(self, appendix_toc_entries: list,
                              page_offset_in_final_doc: int, 
                              base_nest_level: int = 2) -> list:
         """
@@ -29,6 +31,8 @@ class MergeProcessor:
         page_offset_in_final_doc is the 0-indexed page where the appendix content starts in the output document.
         base_nest_level is the level in the master_toc under which these entries should be nested.
         """
+        self.logger.debug(f"Adjusting {len(appendix_toc_entries)} TOC entries with page offset {page_offset_in_final_doc}, nest level {base_nest_level}")
+        
         adjusted_entries = []
         for level, title, page_num, opts in appendix_toc_entries:
             # Original page_num is 1-indexed relative to appendix_doc
@@ -36,6 +40,8 @@ class MergeProcessor:
             new_page_num_in_output = (page_num - 1) + page_offset_in_final_doc + 1
             new_level = base_nest_level + level  # Nest under the existing appendix heading
             adjusted_entries.append([new_level, title, new_page_num_in_output, opts])
+            self.logger.debug(f"  TOC entry '{title}': level {level}->{new_level}, page {page_num}->{new_page_num_in_output}")
+        
         return adjusted_entries
 
     def _find_appendix_heading_in_toc(self, toc_entries: list, marker_page_num: int) -> Optional[int]:
@@ -50,15 +56,14 @@ class MergeProcessor:
         for idx, entry in enumerate(toc_entries):
             if len(entry) >= 3:
                 level, title, page_num = entry[0], entry[1], entry[2]
-                # Check if this TOC entry is on the same page or the page before the marker
-                # (since the marker might be after the heading)
+                # Check if this TOC entry is on the same page or the page before the marker                # (since the marker might be after the heading)
                 if page_num == marker_page_num or page_num == marker_page_num + 1:
                     # Additional check: look for "APPENDIX" in the title
                     if "APPENDIX" in title.upper():
                         return idx
         return None
 
-    def process_merges(self, base_pdf_path: str, merge_placeholders: List[Dict], 
+    def process_merges(self, base_pdf_path: str, merge_placeholders: List[Dict],
                        output_path: str) -> bool:
         """
         Process all merge placeholders in the base PDF, creating a merged TOC.
@@ -67,59 +72,68 @@ class MergeProcessor:
             if base_pdf_path != output_path:
                 try:
                     shutil.copy(base_pdf_path, output_path)
-                    print(f"   • No merges, copied base PDF to: {output_path}")
+                    self.logger.info(f"No merges required, copied base PDF to: {os.path.basename(output_path)}")
                 except Exception as e:
-                    print(f"   ❌ Error copying base PDF: {e}")
+                    self.logger.error(f"Failed to copy base PDF: {e}", exc_info=True)
                     return False
             else:
-                print(f"   • No merges, base PDF is already the output path: {output_path}")
+                self.logger.info("No merges required, base PDF is already at output path")
             return True
 
-        print(f"   • Processing {len(merge_placeholders)} merge(s) with hierarchical TOC...")
+        self.logger.info(f"Processing {len(merge_placeholders)} merge(s) with hierarchical TOC")
 
         master_toc = []
         output_doc = None
         
         try:
-            # Add detailed debugging for the PDF opening issue
-            print(f"   📂 Opening base PDF: {base_pdf_path}")
-            print(f"   📂 File exists: {os.path.exists(base_pdf_path)}")
-            print(f"   📂 File size: {os.path.getsize(base_pdf_path) if os.path.exists(base_pdf_path) else 'N/A'} bytes")
+            # Open and validate base PDF
+            self.logger.debug(f"Opening base PDF: {base_pdf_path}")
+            self.logger.debug(f"File exists: {os.path.exists(base_pdf_path)}")
+            if os.path.exists(base_pdf_path):
+                file_size = os.path.getsize(base_pdf_path) / (1024 * 1024)  # MB
+                self.logger.debug(f"File size: {file_size:.2f} MB")
             
-            # Try to open with explicit error handling
             try:
                 output_doc = fitz.open(base_pdf_path)
-                print(f"   ✓ Successfully opened PDF document")
+                self.logger.debug(f"Successfully opened PDF document, type: {type(output_doc)}")
+                self.logger.debug(f"Document has {len(output_doc)} pages")
             except Exception as open_error:
-                print(f"   ❌ fitz.open() failed: {open_error}")
-                print(f"   📋 fitz.open type: {type(fitz.open)}")
+                self.logger.error(f"Failed to open base PDF with fitz.open(): {open_error}", exc_info=True)
+                self.logger.debug(f"fitz.open type: {type(fitz.open)}")
                 return False
             
-            if output_doc.needs_pass(): 
-                output_doc.authenticate("") 
+            if output_doc.needs_pass: 
+                auth_result = output_doc.authenticate("")
+                self.logger.debug(f"Document authentication result: {auth_result}")
             
-            # Get base TOC with detailed error handling
+            # Extract base TOC
             base_toc_entries = []
             try:
-                print(f"   📑 Extracting TOC from base PDF...")
+                self.logger.debug("Extracting Table of Contents from base PDF")
                 raw_toc = output_doc.get_toc(simple=False)
                 if raw_toc is not None:
                     base_toc_entries = raw_toc
                     master_toc.extend(base_toc_entries)
-                    print(f"   ℹ️ Extracted {len(base_toc_entries)} TOC entries from base PDF")
+                    self.logger.info(f"Extracted {len(base_toc_entries)} TOC entries from base PDF")
+                    for i, entry in enumerate(base_toc_entries[:5]):  # Log first 5 entries
+                        if len(entry) >= 3:
+                            level, title, page = entry[0], entry[1], entry[2]
+                            self.logger.debug(f"  TOC[{i}]: Level {level}, '{title}', Page {page}")
+                        else:
+                            self.logger.debug(f"  TOC[{i}]: Unexpected format: {entry}")
                 else:
-                    print(f"   ℹ️ No Table of Contents found in base PDF")
+                    self.logger.info("No Table of Contents found in base PDF")
             except TypeError as te:
-                print(f"   ⚠️ TypeError getting TOC from base PDF: {te}")
-                print(f"   📋 output_doc type: {type(output_doc)}")
-                print(f"   📋 get_toc method: {type(output_doc.get_toc) if hasattr(output_doc, 'get_toc') else 'Missing'}")
+                self.logger.error(f"TypeError extracting TOC from base PDF: {te}", exc_info=True)
+                self.logger.debug(f"output_doc type: {type(output_doc)}")
+                self.logger.debug(f"get_toc method type: {type(output_doc.get_toc) if hasattr(output_doc, 'get_toc') else 'Missing'}")
                 base_toc_entries = []
             except Exception as e_toc:
-                print(f"   ⚠️ Error getting TOC from base PDF: {e_toc}")
+                self.logger.error(f"Error extracting TOC from base PDF: {e_toc}", exc_info=True)
                 base_toc_entries = []
 
         except Exception as e:
-            print(f"   ❌ Error opening base PDF '{base_pdf_path}': {e}")
+            self.logger.error(f"Error during base PDF processing: {e}", exc_info=True)
             if output_doc and not output_doc.is_closed:
                 output_doc.close()
             return False
@@ -127,12 +141,12 @@ class MergeProcessor:
         try:
             # Find markers and their positions in the original base PDF
             initial_marker_scan_doc = fitz.open(base_pdf_path)
-            if initial_marker_scan_doc.needs_pass(): 
+            if initial_marker_scan_doc.needs_pass: 
                 initial_marker_scan_doc.authenticate("")
 
             sorted_placeholder_infos = []
-            for placeholder in merge_placeholders:
-                marker_text = Config.get_merge_marker(placeholder['index'])
+            for idx, placeholder in enumerate(merge_placeholders, 1):
+                marker_text = Config.get_merge_marker(idx)
                 found_on_page_idx = -1
                 for page_num, page in enumerate(initial_marker_scan_doc):
                     if page.search_for(marker_text, quads=False):
@@ -145,7 +159,7 @@ class MergeProcessor:
                         'marker_text': marker_text
                     })
                 else:
-                    print(f"      ⚠️ Marker '{marker_text}' for '{placeholder.get('pdf_path_raw', 'N/A')}' not found in base PDF. Skipping.")
+                    self.logger.warning(f"Marker '{marker_text}' for '{placeholder.get('pdf_path_raw', 'N/A')}' not found in base PDF. Skipping.")
             
             initial_marker_scan_doc.close()
             sorted_placeholder_infos.sort(key=lambda x: x['original_marker_page_idx'])
@@ -160,23 +174,22 @@ class MergeProcessor:
                 current_marker_page_in_output_idx = original_marker_page_idx + page_offset_from_prior_insertions
                 
                 if not (0 <= current_marker_page_in_output_idx < len(output_doc)):
-                    print(f"      ⚠️ Calculated marker page index {current_marker_page_in_output_idx + 1} is out of bounds. Skipping appendix.")
+                    self.logger.warning(f"Calculated marker page index {current_marker_page_in_output_idx + 1} is out of bounds. Skipping appendix.")
                     continue
-                
-                # Remove marker from the output document
+                  # Remove marker from the output document
                 page_to_clean = output_doc[current_marker_page_in_output_idx]
                 if not self.marker_remover.remove_marker_text(page_to_clean, marker_text):
-                    print(f"      ⚠️ Failed to remove marker '{marker_text}' from page {current_marker_page_in_output_idx + 1}.")
+                    self.logger.warning(f"Failed to remove marker '{marker_text}' from page {current_marker_page_in_output_idx + 1}.")
                 
                 insertion_start_page_idx_in_output = current_marker_page_in_output_idx + 1
 
                 pdf_path = placeholder['resolved_path']
                 appendix_name = os.path.basename(pdf_path)
                 
-                print(f"    Processing merge for appendix: {appendix_name}")
+                self.logger.info("    Processing merge for appendix: %s", appendix_name)
 
                 with fitz.open(pdf_path) as appendix_doc:
-                    if appendix_doc.needs_pass(): 
+                    if appendix_doc.needs_pass: 
                         appendix_doc.authenticate("")
                     self.content_analyzer.bake_annotations(appendix_doc) 
                     
@@ -186,7 +199,7 @@ class MergeProcessor:
                         if raw_appendix_toc is not None:
                             appendix_original_toc = raw_appendix_toc
                     except Exception as e_app_toc:
-                        print(f"      ⚠️ Error getting TOC from appendix PDF: {e_app_toc}")
+                        self.logger.warning("      ⚠️ Error getting TOC from appendix PDF: %s", e_app_toc)
                     
                     # Find the corresponding appendix heading in the base TOC
                     appendix_heading_idx = self._find_appendix_heading_in_toc(
@@ -203,13 +216,12 @@ class MergeProcessor:
                             insertion_start_page_idx_in_output, 
                             base_nest_level=existing_level
                         )
-                        
-                        # Insert the adjusted TOC entries after the appendix heading
+                          # Insert the adjusted TOC entries after the appendix heading
                         toc_insert_position = appendix_heading_idx + 1
                         for entry in reversed(adjusted_appendix_toc):
                             master_toc.insert(toc_insert_position, entry)
                         
-                        print(f"      ✓ Nested {len(adjusted_appendix_toc)} TOC entries under existing appendix heading")
+                        self.logger.info("      ✓ Nested %d TOC entries under existing appendix heading", len(adjusted_appendix_toc))
                     elif appendix_original_toc:
                         # Fallback: add as top-level entries if no corresponding heading found
                         adjusted_appendix_toc = self._adjust_appendix_toc(
@@ -218,34 +230,43 @@ class MergeProcessor:
                             base_nest_level=1
                         )
                         master_toc.extend(adjusted_appendix_toc)
-                        print(f"      ✓ Added {len(adjusted_appendix_toc)} TOC entries as top-level (no corresponding heading found)")
+                        self.logger.info("      ✓ Added %d TOC entries as top-level (no corresponding heading found)", len(adjusted_appendix_toc))
 
                     selected_pages_spec = placeholder.get('page_spec')
-                    page_indices_to_insert = self.page_selector.get_selected_pages(appendix_doc.page_count, selected_pages_spec)
+                    page_selection = self.page_selector.parse_specification(selected_pages_spec)
+                    page_indices_to_insert = self.page_selector.apply_selection(appendix_doc, page_selection)
                     
                     num_pages_to_insert = len(page_indices_to_insert)
                     if num_pages_to_insert > 0:
-                        output_doc.insert_pdf(appendix_doc, 
-                                              select=page_indices_to_insert, 
-                                              start_at=insertion_start_page_idx_in_output,
-                                              toc=False) 
+                        # Convert page indices to a format suitable for insert_pdf
+                        if len(page_indices_to_insert) == len(appendix_doc):
+                            # All pages - no need to specify page selection
+                            output_doc.insert_pdf(appendix_doc, start_at=insertion_start_page_idx_in_output)
+                        else:
+                            # Specific pages - use the pages parameter
+                            output_doc.insert_pdf(appendix_doc, 
+                                                  from_page=page_indices_to_insert[0], 
+                                                  to_page=page_indices_to_insert[-1] if len(page_indices_to_insert) > 1 else page_indices_to_insert[0],
+                                                  start_at=insertion_start_page_idx_in_output)
                         page_offset_from_prior_insertions += num_pages_to_insert
-                        print(f"      ✓ Merged '{appendix_name}', {num_pages_to_insert} pages inserted.")
+                        self.logger.info("      ✓ Merged '%s', %d pages inserted.", appendix_name, num_pages_to_insert)
                     else:
-                        print(f"      • No pages selected from '{appendix_name}'. Skipping insertion.")
+                        self.logger.info("      • No pages selected from '%s'. Skipping insertion.", appendix_name)
             
             if master_toc:
                 output_doc.set_toc(master_toc)
-                print("   ✓ Hierarchical Table of Contents constructed and applied.")
-            
-            output_doc.save(output_path, garbage=3, deflate=True, clean=True)
-            print(f"   ✓ Merged PDF with hierarchical TOC saved to: {output_path}")
+                self.logger.info("   ✓ Hierarchical Table of Contents constructed and applied.")
+              # If we're saving to the same path as the base file, use incremental save
+            if os.path.abspath(base_pdf_path) == os.path.abspath(output_path):
+                output_doc.saveIncr()
+                self.logger.info("   ✓ Merged PDF with hierarchical TOC saved incrementally to: %s", output_path)
+            else:
+                output_doc.save(output_path, garbage=3, deflate=True, clean=True)
+                self.logger.info("   ✓ Merged PDF with hierarchical TOC saved to: %s", output_path)
             return True
 
         except Exception as e:
-            print(f"   ❌ Error processing merges with TOC: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.error("   ❌ Error processing merges with TOC: %s", e, exc_info=True)
             return False
         finally:
             if output_doc and not output_doc.is_closed:
@@ -262,26 +283,25 @@ class MergeProcessor:
             idx: Placeholder index for naming
             
         Returns:
-            bool: True if successful, False otherwise
-        """
+            bool: True if successful, False otherwise        """
         try:
             pdf_path = placeholder['resolved_path']
             page_count = placeholder['page_count']
             
-            print(f"    Processing merge appendix {idx}: {placeholder['pdf_path_raw']}")
+            self.logger.info("    Processing merge appendix %d: %s", idx, placeholder['pdf_path_raw'])
             
             # Find and remove the merge marker
             marker = Config.get_merge_marker(idx)
             marker_page_idx = self._find_and_remove_merge_marker(base_doc, marker)
             
             if marker_page_idx is None:
-                print(f"      ❌ Could not find merge marker")
+                self.logger.error("      ❌ Could not find merge marker")
                 return False
             
-            print(f"      📄 Will insert PDF page(s) after page {marker_page_idx + 1}")
+            self.logger.info("      📄 Will insert PDF page(s) after page %d", marker_page_idx + 1)
             
             # Open source PDF
-            print(f"      Opening appendix PDF: {pdf_path}")
+            self.logger.info("      Opening appendix PDF: %s", pdf_path)
             with fitz.open(pdf_path) as source_doc:
                 # Bake annotations
                 self.content_analyzer.bake_annotations(source_doc)
@@ -293,22 +313,22 @@ class MergeProcessor:
                 if not pages_to_insert:
                     pages_to_insert = list(range(len(source_doc)))
                 
-                print(f"        📄 Using all {len(pages_to_insert)} pages")
+                self.logger.info("        📄 Using all %d pages", len(pages_to_insert))
                 
                 # Insert entire PDF at once (more efficient)
                 insert_position = marker_page_idx + 1
-                print(f"        📥 Inserting entire PDF ({len(pages_to_insert)} pages) at position {insert_position}")
+                self.logger.info("        📥 Inserting entire PDF (%d pages) at position %d", len(pages_to_insert), insert_position)
                 
                 base_doc.insert_pdf(source_doc, from_page=0, to_page=len(source_doc)-1, 
                                    start_at=insert_position)
                 
-                print(f"        ✓ Inserted all {len(pages_to_insert)} pages in single operation")
+                self.logger.info("        ✓ Inserted all %d pages in single operation", len(pages_to_insert))
             
-            print(f"      ✓ Merge appendix {idx} insertion complete")
+            self.logger.info("      ✓ Merge appendix %d insertion complete", idx)
             return True
             
         except Exception as e:
-            print(f"      ❌ Error processing merge {idx}: {e}")
+            self.logger.error("      ❌ Error processing merge %d: %s", idx, e, exc_info=True)
             return False
     
     def _find_and_remove_merge_marker(self, base_doc: fitz.Document, marker: str) -> Optional[int]:
@@ -320,9 +340,8 @@ class MergeProcessor:
             marker: Marker text to find and remove
             
         Returns:
-            int or None: Page index where marker was found, or None if not found
-        """
-        print(f"      🔍 Searching for marker: {marker}")
+            int or None: Page index where marker was found, or None if not found        """
+        self.logger.info("      🔍 Searching for marker: %s", marker)
         
         for page_index in range(len(base_doc)):
             page = base_doc[page_index]
@@ -330,14 +349,14 @@ class MergeProcessor:
             # Check if marker exists on this page
             marker_info = self.marker_remover.find_marker_position(page, marker)
             if marker_info:
-                print(f"      ✓ Found marker on page {page_index + 1}")
-                print(f"      🧹 Removing marker from page {page_index + 1}")
+                self.logger.info("      ✓ Found marker on page %d", page_index + 1)
+                self.logger.info("      🧹 Removing marker from page %d", page_index + 1)
                 
                 # Remove the marker
                 if self.marker_remover.remove_marker_text(page, marker):
-                    print(f"      ✓ Marker removed from page {page_index + 1}")
+                    self.logger.info("      ✓ Marker removed from page %d", page_index + 1)
                 else:
-                    print(f"      ⚠️ Could not remove marker from page {page_index + 1}")
+                    self.logger.warning("      ⚠️ Could not remove marker from page %d", page_index + 1)
                 
                 return page_index
         

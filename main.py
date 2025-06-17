@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import from the modular refactored system
 from report_compiler.core.compiler import ReportCompiler
 from report_compiler.core.config import Config
+from report_compiler.utils.logging_config import setup_logging, get_logger
 
 
 def main():
@@ -47,6 +48,11 @@ Features:
     parser.add_argument('--keep-temp', 
                        action='store_true',
                        help='Keep temporary files for debugging')
+    parser.add_argument('--verbose', '-v',
+                       action='store_true',
+                       help='Enable verbose logging (DEBUG level)')
+    parser.add_argument('--log-file',
+                       help='Log to file in addition to console')
     parser.add_argument('--version', 
                        action='version', 
                        version=f'Report Compiler v{Config.__version__ if hasattr(Config, "__version__") else "2.0.0"}')
@@ -54,22 +60,38 @@ Features:
     # Parse arguments
     args = parser.parse_args()
     
+    # Setup logging
+    setup_logging(
+        level="DEBUG" if args.verbose else "INFO",
+        log_file=args.log_file,
+        verbose=args.verbose
+    )
+    
+    logger = get_logger()
+    logger.info("=" * 60)
+    logger.info("Report Compiler v2.0 - Starting compilation")
+    logger.info("=" * 60)
+    
     # Validate input file
     input_path = Path(args.input_file)
     if not input_path.exists():
-        print(f"❌ Input file not found: {args.input_file}")
+        logger.error(f"Input file not found: {args.input_file}")
         sys.exit(1)
     
     if not input_path.suffix.lower() == '.docx':
-        print(f"❌ Input file must be a DOCX document: {args.input_file}")
+        logger.error(f"Input file must be a DOCX document: {args.input_file}")
         sys.exit(1)
+    
+    logger.info(f"Input DOCX: {input_path.absolute()}")
     
     # Validate output directory
     output_path = Path(args.output_file)
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Output PDF: {output_path.absolute()}")
+        logger.debug(f"Output directory created/verified: {output_path.parent}")
     except Exception as e:
-        print(f"❌ Cannot create output directory: {e}")
+        logger.error(f"Cannot create output directory: {e}", exc_info=True)
         sys.exit(1)
     
     # Run the report compiler
@@ -83,18 +105,22 @@ Features:
         success = compiler.run()
         
         if success:
-            print(f"\\n🎉 Report compilation completed successfully!")
-            print(f"📄 Output: {output_path.absolute()}")
+            logger.info("=" * 60)
+            logger.info("🎉 Report compilation completed successfully!")
+            logger.info(f"📄 Output: {output_path.absolute()}")
+            logger.info("=" * 60)
             sys.exit(0)
         else:
-            print(f"\\n❌ Report compilation failed!")
+            logger.error("=" * 60)
+            logger.error("❌ Report compilation failed!")
+            logger.error("=" * 60)
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print(f"\\n⚠️ Report compilation interrupted by user")
+        logger.warning("⚠️ Report compilation interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\\n❌ Unexpected error: {e}")
+        logger.error(f"Unexpected error during compilation: {e}", exc_info=True)
         sys.exit(1)
 
 
