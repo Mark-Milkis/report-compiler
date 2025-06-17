@@ -1172,10 +1172,10 @@ class ReportCompiler:
         print(f"         • Points: ({overlay_rect.x0:.1f}, {overlay_rect.y0:.1f}) to ({overlay_rect.x1:.1f}, {overlay_rect.y1:.1f})")
         print(f"         • Inches: ({overlay_x_in:.2f}, {overlay_y_in:.2f}) to ({overlay_x_in + overlay_width_in:.2f}, {overlay_y_in + overlay_height_in:.2f})")
         print(f"         • Size: {overlay_rect.width:.1f} x {overlay_rect.height:.1f} points = {overlay_width_in:.2f} x {overlay_height_in:.2f} inches")
-          # Remove the marker text from the page
+        
+        # Remove the marker text from the page
         page = pdf_doc[start_page_index]
-        if self._remove_marker_text_advanced(page, marker):
-            print(f"      ✓ Removed marker text from page {start_page_index + 1}")
+        if self._remove_marker_text_advanced(page, marker):            print(f"      ✓ Removed marker text from page {start_page_index + 1}")
         else:
             print(f"      ⚠️ Could not find marker text to remove from page {start_page_index + 1}")
         
@@ -1183,7 +1183,7 @@ class ReportCompiler:
     
     def _get_content_bbox(self, pdf_page):
         """
-        Get the bounding box of actual content (excluding margins).
+        Get the bounding box of actual content (excluding margins) by detecting text, images, and drawings.
         
         Args:
             pdf_page: PyMuPDF page object
@@ -1208,15 +1208,14 @@ class ReportCompiler:
                             else:
                                 content_bbox.include_rect(bbox)
             
-            # Get all drawing objects
+            # Get all drawing objects (including borders, lines, shapes)
             try:
                 drawings = pdf_page.get_drawings()
                 for drawing in drawings:
                     bbox = fitz.Rect(drawing["rect"])
                     if content_bbox is None:
                         content_bbox = bbox
-                    else:
-                        content_bbox.include_rect(bbox)
+                    else:                        content_bbox.include_rect(bbox)
             except:
                 # get_drawings() might not be available in all PyMuPDF versions
                 pass
@@ -1224,7 +1223,8 @@ class ReportCompiler:
             # Get all images
             try:
                 images = pdf_page.get_images()
-                for img in images:                    # Get image bbox - format: (xref, smask, width, height, bpc, colorspace, alt, name, filter)
+                for img in images:
+                    # Get image bbox - format: (xref, smask, width, height, bpc, colorspace, alt, name, filter)
                     img_rect = pdf_page.get_image_bbox(img)
                     if img_rect:
                         if content_bbox is None:
@@ -1241,30 +1241,32 @@ class ReportCompiler:
         
         return content_bbox
     
-    def _apply_content_cropping(self, pdf_page, crop_enabled=True, padding=6):
+    def _apply_content_cropping(self, pdf_page, crop_enabled=True, padding=8):
         """
-        Crop PDF page to content boundaries with optional padding, or return full page.
+        Crop PDF page to content boundaries with border-preserving padding, or return full page.
         
         Args:
             pdf_page: PyMuPDF page object
             crop_enabled (bool): Whether to enable content cropping (default: True)
-            padding (int): Padding around content in points (default: 6 points = 0.08 inch)
+            padding (int): Padding around content in points (default: 8 points = 0.11 inch)
             
         Returns:
             fitz.Rect: Content rectangle to use for clipping
         """
         if not crop_enabled:
             print(f"        📐 Content cropping disabled, using full page ({pdf_page.rect.width / 72:.2f} x {pdf_page.rect.height / 72:.2f} inches)")
-            return pdf_page.rect
-        
+            return pdf_page.rect        
         content_bbox = self._get_content_bbox(pdf_page)
         
         if content_bbox and not content_bbox.is_empty:
-            # Add padding around content
-            content_bbox.x0 = max(0, content_bbox.x0 - padding)
-            content_bbox.y0 = max(0, content_bbox.y0 - padding)
-            content_bbox.x1 = min(pdf_page.rect.width, content_bbox.x1 + padding)
-            content_bbox.y1 = min(pdf_page.rect.height, content_bbox.y1 + padding)
+            # Add border-preserving padding around content
+            # Use larger padding to ensure borders and thin lines are preserved
+            border_padding = max(padding, 8)  # Minimum 8 points (about 1/9 inch) to preserve borders
+            
+            content_bbox.x0 = max(0, content_bbox.x0 - border_padding)
+            content_bbox.y0 = max(0, content_bbox.y0 - border_padding)
+            content_bbox.x1 = min(pdf_page.rect.width, content_bbox.x1 + border_padding)
+            content_bbox.y1 = min(pdf_page.rect.height, content_bbox.y1 + border_padding)
             
             # Convert to inches for display
             content_bbox_inches = (
