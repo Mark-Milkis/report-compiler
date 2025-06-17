@@ -71,6 +71,7 @@ class MarkerRemover:
     def find_marker_position(self, page: fitz.Page, marker_text: str) -> Optional[Dict[str, any]]:
         """
         Find marker position and return detailed information.
+        Used by OverlayProcessor.
 
         Args:
             page: PyMuPDF page object
@@ -84,21 +85,10 @@ class MarkerRemover:
             if not marker_rect:
                 return None
 
-            # Basic position information
             position_info = {
-                "rect": marker_rect,  # Add the fitz.Rect object itself
-                "x0": marker_rect.x0,
-                "y0": marker_rect.y0,
-                "x1": marker_rect.x1,
-                "y1": marker_rect.y1,
-                "width": marker_rect.width,
-                "height": marker_rect.height,
-                "center_x": (marker_rect.x0 + marker_rect.x1) / 2,
-                "center_y": (marker_rect.y0 + marker_rect.y1) / 2,
-                "page_width": page.rect.width,
-                "page_height": page.rect.height,
-                "position_inches": (marker_rect.x0 / 72, marker_rect.y0 / 72), # Added
-                "size_inches": (marker_rect.width / 72, marker_rect.height / 72) # Added
+                "rect": marker_rect,
+                "position_inches": (marker_rect.x0 / 72, marker_rect.y0 / 72),
+                "size_inches": (marker_rect.width / 72, marker_rect.height / 72)
             }
             
             return position_info

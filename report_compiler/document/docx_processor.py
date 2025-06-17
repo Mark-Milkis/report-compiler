@@ -118,11 +118,10 @@ class DocxProcessor:
             # Store metadata for later use
             self.table_metadata[table_idx] = {
                 'width_pts': table_width_pts,
-                'height_pts': table_height_pts,
-                'width_inches': dimensions['width_inches'],
-                'height_inches': dimensions['height_inches']
+                'height_pts': table_height_pts
             }
-              # Process the table
+            
+            # Process the table
             if table_idx < len(self.doc.tables):
                 table = self.doc.tables[table_idx]
                 
