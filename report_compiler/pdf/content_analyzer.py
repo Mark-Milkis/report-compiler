@@ -75,14 +75,14 @@ class ContentAnalyzer:
         return content_bbox
     
     def apply_content_cropping(self, pdf_page: fitz.Page, crop_enabled: bool = True, 
-                              padding: int = None) -> fitz.Rect:
+                              padding: Optional[int] = None) -> fitz.Rect:
         """
         Crop PDF page to content boundaries with border-preserving padding, or return full page.
         
         Args:
             pdf_page: PyMuPDF page object
             crop_enabled: Whether to enable content cropping (default: True)
-            padding: Padding around content in points (default: from Config)
+            padding: Padding around content in points (default: from Config.DEFAULT_PADDING)
             
         Returns:
             fitz.Rect: Content rectangle to use for clipping
@@ -97,27 +97,36 @@ class ContentAnalyzer:
         content_bbox = self.get_content_bbox(pdf_page)
         
         if content_bbox and not content_bbox.is_empty:
-            # Add border-preserving padding around content
-            # Use larger padding to ensure borders and thin lines are preserved
-            border_padding = max(padding, Config.MIN_PADDING)  # Minimum padding to preserve borders
+            # Apply the specified padding
+            padded_bbox = fitz.Rect(
+                content_bbox.x0 - padding,
+                content_bbox.y0 - padding,
+                content_bbox.x1 + padding,
+                content_bbox.y1 + padding
+            )
             
-            content_bbox.x0 = max(0, content_bbox.x0 - border_padding)
-            content_bbox.y0 = max(0, content_bbox.y0 - border_padding)
-            content_bbox.x1 = min(pdf_page.rect.width, content_bbox.x1 + border_padding)
-            content_bbox.y1 = min(pdf_page.rect.height, content_bbox.y1 + border_padding)
+            # Ensure padded box does not exceed page boundaries
+            padded_bbox.intersect(pdf_page.rect)
             
             # Convert to inches for display
-            content_bbox_inches = (
-                content_bbox.x0 / 72, content_bbox.y0 / 72,
-                content_bbox.x1 / 72, content_bbox.y1 / 72
+            padded_bbox_inches = (
+                padded_bbox.x0 / 72, padded_bbox.y0 / 72,
+                padded_bbox.x1 / 72, padded_bbox.y1 / 72
             )
             page_size_inches = (pdf_page.rect.width / 72, pdf_page.rect.height / 72)
             
-            print(f"        📐 Content area: ({content_bbox_inches[0]:.2f}, {content_bbox_inches[1]:.2f}) to ({content_bbox_inches[2]:.2f}, {content_bbox_inches[3]:.2f}) inches")
+            print(f"        📐 Padded content area: ({padded_bbox_inches[0]:.2f}, {padded_bbox_inches[1]:.2f}) to ({padded_bbox_inches[2]:.2f}, {padded_bbox_inches[3]:.2f}) inches with {padding}pt padding")
             print(f"        📐 Original page: {page_size_inches[0]:.2f} x {page_size_inches[1]:.2f} inches")
-            print(f"        📐 Using content-aware cropping (saves {((pdf_page.rect.width * pdf_page.rect.height) - (content_bbox.width * content_bbox.height)) / (pdf_page.rect.width * pdf_page.rect.height) * 100:.1f}% space)")
             
-            return content_bbox
+            original_area = pdf_page.rect.width * pdf_page.rect.height
+            cropped_area = padded_bbox.width * padded_bbox.height
+            if original_area > 0:
+                savings_percentage = (original_area - cropped_area) / original_area * 100
+                print(f"        📐 Using content-aware cropping (saves {savings_percentage:.1f}% space after padding)")
+            else:
+                print(f"        📐 Using content-aware cropping (original page area is zero)")
+
+            return padded_bbox
         else:
             print(f"        📐 No content detected or empty bbox, using full page")
             return pdf_page.rect
