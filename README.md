@@ -27,6 +27,47 @@ The Report Compiler automates the creation of comprehensive PDF reports by:
 - ✅ **Table-based overlay** - Precise PDF placement using table dimensions and marker positioning
 - ✅ **Cell replication** - Multi-page PDFs create consecutive table cells automatically
 - ✅ **Intelligent positioning** - Uses table properties for automatic overlay rectangle calculation
+- ✅ **Modular architecture** - Clean separation of concerns with focused classes and modules
+
+## Architecture
+
+The Report Compiler uses a modular architecture with clear separation of responsibilities:
+
+### Core Modules
+
+- **`report_compiler.core`** - Main orchestration and configuration
+  - `ReportCompiler` - Main orchestrator class
+  - `Config` - Configuration management and constants
+
+- **`report_compiler.document`** - Word document processing
+  - `PlaceholderParser` - Detects and parses PDF placeholders
+  - `DocxProcessor` - Modifies DOCX files (markers, page breaks, cell replication)
+  - `WordConverter` - Converts DOCX to PDF using Word automation
+
+- **`report_compiler.pdf`** - PDF processing and manipulation
+  - `ContentAnalyzer` - Analyzes PDF content and structure
+  - `OverlayProcessor` - Handles table-based PDF overlays
+  - `MergeProcessor` - Handles paragraph-based PDF merges
+  - `MarkerRemover` - Removes placement markers from final PDF
+
+- **`report_compiler.utils`** - Utility classes and helpers
+  - `FileManager` - Temporary file management and cleanup
+  - `Validators` - Input validation and PDF verification
+  - `PageSelector` - Page selection parsing and processing
+
+### Usage as a Library
+
+```python
+from report_compiler.core.compiler import ReportCompiler
+
+# Basic usage
+compiler = ReportCompiler("input.docx", "output.pdf")
+compiler.compile()
+
+# With debug mode
+compiler = ReportCompiler("input.docx", "output.pdf", keep_temp=True)
+compiler.compile()
+```
 
 ## Quick Start
 
@@ -39,13 +80,13 @@ pip install -r requirements.txt
 ### Basic Usage
 
 ```bash
-python report_compiler.py input_report.docx output_report.pdf
+python main_refactored.py input_report.docx output_report.pdf
 ```
 
 ### Debug Mode (with temp files)
 
 ```bash
-python report_compiler.py input_report.docx output_report.pdf --keep-temp
+python main_refactored.py input_report.docx output_report.pdf --keep-temp
 ```
 
 ## Placeholder Format
