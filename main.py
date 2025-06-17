@@ -13,7 +13,9 @@ from pathlib import Path
 # Add the package to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from report_compiler import ReportCompiler, Config
+# Import from the modular refactored system
+from report_compiler.core.compiler import ReportCompiler
+from report_compiler.core.config import Config
 
 
 def main():
