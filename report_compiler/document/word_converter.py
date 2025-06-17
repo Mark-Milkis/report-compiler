@@ -81,10 +81,13 @@ class WordConverter:
                 OutputFileName=pdf_path,
                 ExportFormat=Config.WORD_EXPORT_FORMAT,  # PDF format
                 OpenAfterExport=False,
-                OptimizeFor=0,  # Print optimization
+                OptimizeFor=0,  # Print optimization - wdExportOptimizeForPrint
+                Range=0,       # Export entire document - wdExportAllDocument
+                Item=0,        # Export document content - wdExportDocumentContent (can also try 7 for wdExportDocumentWithMarkup if headings are missed)
+                CreateBookmarks=1,  # Create bookmarks from headings - wdExportCreateHeadingBookmarks
+                DocStructureTags=True, # Create document structure tags for accessibility
                 BitmapMissingFonts=True,
-                DocStructureTags=False,
-                CreateBookmarks=False
+                UseISO19005_1=False # PDF/A compatibility, can be restrictive
             )
             
             print(f"    ✓ Successfully converted '{os.path.basename(docx_path)}' to PDF")
