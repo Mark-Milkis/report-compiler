@@ -8,7 +8,7 @@ into professional PDF reports with precise overlay positioning and merged append
 __version__ = "2.0.0"
 __author__ = "Report Compiler Team"
 
-from .core.compiler import ReportCompiler
+# from .core.compiler import ReportCompiler  # Temporarily commented
 from .core.config import Config
 
-__all__ = ['ReportCompiler', 'Config']
+__all__ = ['Config']  # 'ReportCompiler'
