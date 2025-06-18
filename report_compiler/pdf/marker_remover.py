@@ -97,3 +97,51 @@ class MarkerRemover:
         except Exception as e: # It's good practice to log or print the exception
             self.logger.warning("      ⚠️ Error in find_marker_position: %s", e)
             return None
+
+    def remove_markers(self, input_pdf_path: str, markers: list[str], output_pdf_path: str) -> bool:
+        """
+        Removes all specified markers from the PDF by iterating through pages
+        and redacting each marker text.
+
+        Args:
+            input_pdf_path: Path to the input PDF file.
+            markers: A list of marker strings to remove.
+            output_pdf_path: Path to save the cleaned PDF file.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        self.logger.debug("      Removing %d markers from '%s'...", len(markers), input_pdf_path)
+        try:
+            pdf_document = fitz.open(input_pdf_path)
+            for page in pdf_document:
+                for marker in markers:
+                    self._remove_text_from_page(page, marker)
+            
+            pdf_document.save(output_pdf_path, garbage=4, deflate=True, clean=True)
+            pdf_document.close()
+            self.logger.debug("      Markers removed. Cleaned PDF saved to '%s'", output_pdf_path)
+            return True
+        except Exception as e:
+            self.logger.error("      ❌ Error during marker removal: %s", e, exc_info=True)
+            return False
+
+    def _remove_text_from_page(self, page: fitz.Page, text_to_remove: str):
+        """
+        Remove specified text from a PDF page by applying redactions.
+
+        Args:
+            page: PyMuPDF page object.
+            text_to_remove: Text to remove.
+        """
+        try:
+            text_instances = page.search_for(text_to_remove)
+            for inst in text_instances:
+                page.add_redact_annot(inst)
+            
+            if text_instances:
+                page.apply_redactions()
+                self.logger.debug("        - Redacted marker '%s' on page %d.", text_to_remove, page.number + 1)
+
+        except Exception as e:
+            self.logger.warning("        ⚠️ Error removing text '%s': %s", text_to_remove, e)

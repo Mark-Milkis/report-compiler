@@ -5,15 +5,104 @@ PDF content analysis and cropping utilities.
 from typing import Optional, Dict, Any
 import fitz  # PyMuPDF
 from ..core.config import Config
+from ..utils.conversions import points_to_inches
 from ..utils.logging_config import get_module_logger
 
 
 class ContentAnalyzer:
-    """Handles PDF content detection and cropping operations."""
-    
+    """Handles PDF content detection and analysis."""
+
     def __init__(self):
         self.logger = get_module_logger(__name__)
-    
+
+    def find_toc_pages(self, pdf_path: str) -> list[int]:
+        """Identifies pages that appear to be a Table of Contents."""
+        toc_pages = []
+        try:
+            self.logger.debug("  > Scanning for Table of Contents...")
+            doc = fitz.open(pdf_path)
+            # A simple heuristic: look for pages with the title "Table of Contents"
+            for i, page in enumerate(doc):
+                if "table of contents" in page.get_text().lower():
+                    toc_pages.append(i)
+            return toc_pages
+        except Exception as e:
+            self.logger.error("  > ❌ Error analyzing for ToC pages: %s", e, exc_info=True)
+            return []
+
+    def find_placeholder_markers(
+        self, pdf_path: str, placeholders: dict[str, Any], table_metadata: dict[int, Any]
+    ) -> dict[str, Any]:
+        """
+        Scans the PDF for all placeholder markers and records their locations and metadata.
+        Handles multi-page overlays by searching for each page's unique marker.
+
+        Returns:
+            A content_map dictionary mapping a marker string to its location data.
+        """
+        content_map = {}
+        self.logger.debug("  > Scanning PDF for placeholder markers...")
+        try:
+            doc = fitz.open(pdf_path)
+            
+            # Process paragraph placeholders
+            for placeholder in placeholders.get('paragraph', []):
+                self._find_and_map_marker(doc, placeholder, content_map)
+
+            # Process table placeholders, handling multi-page overlays
+            for placeholder in placeholders.get('table', []):
+                num_pages = placeholder.get('page_count', 1)
+                
+                for page_num in range(1, num_pages + 1):
+                    # For each page of the overlay, find its corresponding marker
+                    self._find_and_map_marker(doc, placeholder, content_map, table_metadata, page_num)
+
+            self.logger.debug("  > Found %d markers in total.", len(content_map))
+            return content_map
+        except Exception as e:
+            self.logger.error("❌ Error finding placeholder markers in PDF: %s", e, exc_info=True)
+            return {}
+
+    def _find_and_map_marker(self, doc: fitz.Document, placeholder: dict[str, Any], content_map: dict[str, Any], table_metadata: Optional[Dict[int, Any]] = None, page_num: int = 1):
+        """Helper to find a single marker and add it to the content map."""
+        marker = self._get_marker_for_placeholder(placeholder, page_num)
+        if not marker:
+            return
+
+        found_marker = self._search_for_marker_in_doc(doc, marker)
+        if found_marker:
+            page_index, rect = found_marker
+            self.logger.debug("    - Found marker '%s' on page %d at (%.2f, %.2f) inches.",
+                             marker, page_index + 1, points_to_inches(rect.x0), points_to_inches(rect.y0))
+            
+            map_entry = {
+                'placeholder': placeholder,
+                'page_index': page_index,
+                'rect': [rect.x0, rect.y0, rect.x1, rect.y1],
+                'type': placeholder['type']
+            }
+            if placeholder['type'] == 'table':
+                if table_metadata:
+                    map_entry['table_dims'] = table_metadata.get(placeholder['table_index'], {})
+                map_entry['overlay_page_num'] = page_num # Add the overlay page number
+            content_map[marker] = map_entry
+        else:
+            self.logger.warning("    - ⚠️ Marker '%s' not found in the PDF.", marker)
+
+    def _get_marker_for_placeholder(self, placeholder: dict[str, Any], page_num: int = 1) -> Optional[str]:
+        if placeholder.get('type') == 'table':
+            return Config.get_overlay_marker(placeholder['table_index'], page_num)
+        elif placeholder.get('type') == 'paragraph':
+            return Config.get_merge_marker(placeholder['paragraph_index'])
+        return None
+
+    def _search_for_marker_in_doc(self, doc: fitz.Document, marker: str) -> Optional[tuple[int, fitz.Rect]]:
+        for page_index, page in enumerate(doc):
+            rects = page.search_for(marker)
+            if rects:
+                return page_index, rects[0]  # Return page and rect of first find
+        return None
+
     def get_content_bbox(self, pdf_page: fitz.Page) -> Optional[fitz.Rect]:
         """
         Get the bounding box of actual content (excluding margins) by detecting text, images, and drawings.
@@ -25,58 +114,45 @@ class ContentAnalyzer:
             fitz.Rect: Bounding box of content, or None if no content found
         """
         content_bbox = None
-        
         try:
-            # Get all text blocks
-            text_blocks = pdf_page.get_text("dict")
-            
-            # Include text boundaries
-            for block in text_blocks.get("blocks", []):
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line.get("spans", []):
-                            bbox = fitz.Rect(span["bbox"])
-                            if content_bbox is None:
-                                content_bbox = bbox
-                            else:
-                                content_bbox.include_rect(bbox)
-            
-            # Get all drawing objects (including borders, lines, shapes)
-            try:
-                drawings = pdf_page.get_drawings()
-                for drawing in drawings:
-                    bbox = fitz.Rect(drawing["rect"])
+            # Combine text, drawings, and images to find the total content area
+            paths = pdf_page.get_drawings()
+            text_blocks = pdf_page.get_text("dict")["blocks"]
+            image_blocks = pdf_page.get_images(full=True)
+
+            if not paths and not text_blocks and not image_blocks:
+                self.logger.debug("      - Page has no content to analyze.")
+                return None
+
+            for path in paths:
+                if content_bbox is None:
+                    content_bbox = path["rect"]
+                else:
+                    content_bbox.include_rect(path["rect"])
+
+            for block in text_blocks:
+                if "bbox" in block:
                     if content_bbox is None:
-                        content_bbox = bbox
+                        content_bbox = fitz.Rect(block["bbox"])
                     else:
-                        content_bbox.include_rect(bbox)
-            except:
-                # get_drawings() might not be available in all PyMuPDF versions
-                pass
-            
-            # Get all images
-            try:
-                images = pdf_page.get_images()
-                for img in images:
-                    # Get image bbox - format: (xref, smask, width, height, bpc, colorspace, alt, name, filter)
-                    img_rect = pdf_page.get_image_bbox(img)
-                    if img_rect:
-                        if content_bbox is None:
-                            content_bbox = img_rect
-                        else:
-                            content_bbox.include_rect(img_rect)
-            except:
-                # Fallback: get images without bbox if method not available
-                pass
-        
+                        content_bbox.include_rect(fitz.Rect(block["bbox"]))
+
+            for img in image_blocks:
+                img_rect = pdf_page.get_image_bbox(img)
+                if img_rect:
+                    if content_bbox is None:
+                        content_bbox = img_rect
+                    else:
+                        content_bbox.include_rect(img_rect)
+
         except Exception as e:
-            self.logger.warning("        ⚠️ Error detecting content bbox: %s", e)
+            self.logger.warning("    ⚠️ Error detecting content bbox: %s", e)
             return None
-        
         return content_bbox
-    
-    def apply_content_cropping(self, pdf_page: fitz.Page, crop_enabled: bool = True, 
-                              padding: Optional[int] = None) -> fitz.Rect:
+
+    def apply_content_cropping(
+        self, pdf_page: fitz.Page, crop_enabled: bool = True, padding: Optional[int] = None
+    ) -> fitz.Rect:
         """
         Crop PDF page to content boundaries with border-preserving padding, or return full page.
         
@@ -90,113 +166,41 @@ class ContentAnalyzer:
         """
         if padding is None:
             padding = Config.DEFAULT_PADDING
-            
-        if not crop_enabled:
-            self.logger.info("        📐 Content cropping disabled, using full page (%.2f x %.2f inches)", 
-                           pdf_page.rect.width / 72, pdf_page.rect.height / 72)
-            return pdf_page.rect
-        
-        content_bbox = self.get_content_bbox(pdf_page)
-        
-        if content_bbox and not content_bbox.is_empty:
-            # Apply the specified padding
-            padded_bbox = fitz.Rect(
-                content_bbox.x0 - padding,
-                content_bbox.y0 - padding,
-                content_bbox.x1 + padding,
-                content_bbox.y1 + padding
-            )
-            
-            # Ensure padded box does not exceed page boundaries
-            padded_bbox.intersect(pdf_page.rect)
-            
-            # Convert to inches for display
-            padded_bbox_inches = (
-                padded_bbox.x0 / 72, padded_bbox.y0 / 72,
-                padded_bbox.x1 / 72, padded_bbox.y1 / 72
-            )
-            page_size_inches = (pdf_page.rect.width / 72, pdf_page.rect.height / 72)
-            self.logger.info("        📐 Padded content area: (%.2f, %.2f) to (%.2f, %.2f) inches with %dpt padding",
-                           padded_bbox_inches[0], padded_bbox_inches[1], 
-                           padded_bbox_inches[2], padded_bbox_inches[3], padding)
-            self.logger.info("        📐 Original page: %.2f x %.2f inches", 
-                           page_size_inches[0], page_size_inches[1])
-            
-            original_area = pdf_page.rect.width * pdf_page.rect.height
-            cropped_area = padded_bbox.width * padded_bbox.height
-            if original_area > 0:
-                savings_percentage = (original_area - cropped_area) / original_area * 100
-                self.logger.info("        📐 Using content-aware cropping (saves %.1f%% space after padding)", 
-                                savings_percentage)
-            else:
-                self.logger.info("        📐 Using content-aware cropping (original page area is zero)")
 
-            return padded_bbox
-        else:
-            self.logger.info("        📐 No content detected or empty bbox, using full page")
+        if not crop_enabled:
+            self.logger.debug("      - Content cropping disabled, using full page.")
             return pdf_page.rect
-    
-    def detect_annotations(self, pdf_doc: fitz.Document) -> Dict[str, any]:
-        """
-        Detect and analyze annotations in a PDF document.
-        
-        Args:
-            pdf_doc: PyMuPDF document object
-            
-        Returns:
-            Dict with annotation analysis results
-        """
-        total_annotations = 0
-        pages_with_annotations = 0
-        annotation_types = set()
-        
-        for page_num in range(len(pdf_doc)):
-            page = pdf_doc[page_num]
-            annotations = page.annots()
-            
-            if annotations:
-                page_annot_count = len(list(annotations))
-                if page_annot_count > 0:
-                    total_annotations += page_annot_count
-                    pages_with_annotations += 1
-                    
-                    # Get annotation types
-                    for annot in page.annots():
-                        annotation_types.add(annot.type[1])  # Get annotation type name
-        
-        return {
-            'total_annotations': total_annotations,
-            'pages_with_annotations': pages_with_annotations,
-            'total_pages': len(pdf_doc),
-            'annotation_types': list(annotation_types),
-            'has_annotations': total_annotations > 0
-        }
-    
-    def bake_annotations(self, pdf_doc: fitz.Document) -> bool:
-        """
-        Bake annotations into PDF content to preserve them during processing.
-        
-        Args:
-            pdf_doc: PyMuPDF document object
-            
-        Returns:
-            bool: True if annotations were found and baked, False otherwise
-        """
-        annotation_info = self.detect_annotations(pdf_doc)
-        
-        if annotation_info['has_annotations']:
-            self.logger.info("        📝 Found %d annotation(s), baking into content...", 
-                           annotation_info['total_annotations'])
-            
-            # Bake annotations into the content
-            for page_num in range(len(pdf_doc)):
-                page = pdf_doc[page_num]
-                
-                # This applies all annotations to the page content
-                page.apply_redactions()
-            
-            self.logger.info("        ✓ Annotations baked into PDF content")
-            return True
-        else:
-            self.logger.info("        📝 No annotations found in PDF")
-            return False
+
+        content_bbox = self.get_content_bbox(pdf_page)
+
+        if content_bbox is None or content_bbox.is_empty or content_bbox.is_infinite:
+            self.logger.debug("      - No valid content found for cropping, using full page.")
+            return pdf_page.rect
+
+        # Apply padding
+        padded_rect = fitz.Rect(
+            content_bbox.x0 - padding,
+            content_bbox.y0 - padding,
+            content_bbox.x1 + padding,
+            content_bbox.y1 + padding,
+        )
+
+        # Ensure the padded rectangle does not exceed the page boundaries
+        final_rect = padded_rect & pdf_page.rect
+        self.logger.debug("      - Original content box: (%.2f, %.2f) to (%.2f, %.2f) inches",
+                         points_to_inches(content_bbox.x0), points_to_inches(content_bbox.y0),
+                         points_to_inches(content_bbox.x1), points_to_inches(content_bbox.y1))
+        self.logger.debug("      - Final cropped area with padding: %.2f\" x %.2f\"",
+                         points_to_inches(final_rect.width), points_to_inches(final_rect.height))
+
+        return final_rect
+
+    def bake_annotations(self, pdf_doc: fitz.Document):
+        """Applies all annotations (comments, highlights) permanently to the pages."""
+        self.logger.debug("  > Baking annotations for %d pages...", len(pdf_doc))
+        for page in pdf_doc:
+            for annot in page.annots():
+                # Applying the annotation renders it onto the page content
+                annot.update(flags=fitz.ANNOT_FLAG_PRINT)
+                # Deleting the annotation removes the interactive element
+                page.delete_annot(annot)

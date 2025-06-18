@@ -192,44 +192,81 @@ class Validators:
         
         return result
     
-    @staticmethod
-    def validate_placeholders(placeholders: List[Dict]) -> Dict[str, any]:
+    def validate_placeholders(self, placeholders: List[Dict], base_directory: str) -> Dict[str, any]:
         """
-        Validate a list of placeholders for consistency and conflicts.
+        Validates each placeholder, resolves its path, and checks for consistency.
         
         Args:
-            placeholders: List of placeholder dictionaries
+            placeholders: List of placeholder dictionaries.
+            base_directory: The base directory for resolving relative paths.
             
         Returns:
-            Dict with validation results
+            Dict with validation results.
         """
         result = {
             'valid': True,
             'errors': [],
             'warnings': [],
-            'total_placeholders': len(placeholders),
-            'overlay_count': 0,
-            'merge_count': 0        }
-        
-        overlay_paths = []
-        merge_paths = []
-        
+        }
+
         for placeholder in placeholders:
-            if placeholder.get('type') == 'overlay':
-                result['overlay_count'] += 1
-                overlay_paths.append(placeholder.get('pdf_path_raw', ''))
-            elif placeholder.get('type') == 'merge':
-                result['merge_count'] += 1
-                merge_paths.append(placeholder.get('pdf_path_raw', ''))
+            pdf_path_raw = placeholder.get('pdf_path_raw')
+            if not pdf_path_raw:
+                msg = f"Placeholder is missing 'pdf_path_raw': {placeholder}"
+                result['errors'].append(msg)
+                result['valid'] = False
+                continue
+
+            path_validation = self.validate_pdf_path(pdf_path_raw, base_directory)
+            if not path_validation['valid']:
+                msg = f"Invalid PDF in placeholder '{pdf_path_raw}': {path_validation['error_message']}"
+                result['errors'].append(msg)
+                result['valid'] = False
+                continue
+            
+            # Mutate the placeholder dictionary to include resolved path and page count
+            placeholder['resolved_path'] = path_validation['resolved_path']
+            placeholder['page_count'] = path_validation['page_count']
+
+        if not result['valid']:
+            return result # Stop if there are path errors
+
+        # Now check for consistency
+        consistency_result = self._validate_consistency(placeholders)
+        result['errors'].extend(consistency_result['errors'])
+        result['warnings'].extend(consistency_result['warnings'])
+        if not consistency_result['valid']:
+            result['valid'] = False
+            
+        return result
+
+    @staticmethod
+    def _validate_consistency(placeholders: List[Dict]) -> Dict[str, any]:
+        """
+        Validate a list of placeholders for consistency and conflicts.
+        """
+        result = {
+            'valid': True,
+            'errors': [],
+            'warnings': [],
+        }
+        
+        overlay_paths = [p.get('pdf_path_raw', '') for p in placeholders if p.get('type') == 'overlay']
+        merge_paths = [p.get('pdf_path_raw', '') for p in placeholders if p.get('type') == 'merge']
         
         # Check for duplicate paths
         all_paths = overlay_paths + merge_paths
         seen_paths = set()
+        duplicates = set()
         for path in all_paths:
             if path in seen_paths:
-                result['warnings'].append(f"Duplicate PDF path: {path}")
+                duplicates.add(path)
             seen_paths.add(path)
         
+        if duplicates:
+            for path in duplicates:
+                result['warnings'].append(f"Duplicate PDF path used: {path}")
+
         # Check for mixed usage of same PDF (both overlay and merge)
         overlay_set = set(overlay_paths)
         merge_set = set(merge_paths)
@@ -237,7 +274,7 @@ class Validators:
         
         if overlapping:
             for path in overlapping:
-                result['errors'].append(f"PDF used for both overlay and merge: {path}")
+                result['errors'].append(f"PDF used for both overlay and merge, which is not allowed: {path}")
             result['valid'] = False
         
         return result
