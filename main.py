@@ -40,33 +40,20 @@ Features:
   • Multi-page overlay support with automatic table replication
   • Comprehensive validation and error reporting
         """)
-    
-    parser.add_argument('input_file', 
-                       help='Input DOCX file path')
-    parser.add_argument('output_file', 
-                       help='Output PDF file path')
-    parser.add_argument('--keep-temp', 
-                       action='store_true',
-                       help='Keep temporary files for debugging')
-    parser.add_argument('--verbose', '-v',
-                       action='store_true',
-                       help='Enable verbose logging (DEBUG level)')
-    parser.add_argument('--log-file',
-                       help='Log to file in addition to console')
-    parser.add_argument('--version', 
-                       action='version', 
-                       version=f'Report Compiler v{Config.__version__ if hasattr(Config, "__version__") else "2.0.0"}')
-    
+
+    parser.add_argument('input_file', help='Input DOCX file path')
+    parser.add_argument('output_file', help='Output PDF file path')
+    parser.add_argument('--keep-temp', action='store_true', help='Keep temporary files for debugging')
+    parser.add_argument('--verbose', '-v', '--debug', action='store_true', help='Enable verbose logging (DEBUG level)')
+    parser.add_argument('--log-file', help='Log to file in addition to console')
+    parser.add_argument('--version', action='version', version=f'Report Compiler v{Config.__version__ if hasattr(Config, "__version__") else "2.0.0"}')
+
     # Parse arguments
     args = parser.parse_args()
-    
+
     # Setup logging
-    setup_logging(
-        level="DEBUG" if args.verbose else "INFO",
-        log_file=args.log_file,
-        verbose=args.verbose
-    )
-    
+    setup_logging(log_file=args.log_file, verbose=args.verbose)
+
     logger = get_logger()
     logger.info("=" * 60)
     logger.info("Report Compiler v2.0 - Starting compilation")
@@ -95,6 +82,7 @@ Features:
         sys.exit(1)
     
     # Run the report compiler
+    compiler = None
     try:
         compiler = ReportCompiler(
             input_path=str(input_path.absolute()),
@@ -117,11 +105,14 @@ Features:
             sys.exit(1)
             
     except KeyboardInterrupt:
-        logger.warning("⚠️ Report compilation interrupted by user")
+        logger.warning("\n⚠️ Report compilation interrupted by user.")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Unexpected error during compilation: {e}", exc_info=True)
+        logger.error(f"\n❌ An unexpected error occurred during compilation: {e}", exc_info=True)
         sys.exit(1)
+    finally:
+        if compiler and hasattr(compiler, 'word_converter'):
+            compiler.word_converter.disconnect()
 
 
 if __name__ == '__main__':

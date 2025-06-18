@@ -21,6 +21,17 @@ class WordConverter:
         self.word_app = None
         self.is_connected = False
         self.logger = get_logger()
+
+    def is_available(self) -> bool:
+        """Checks if the Word application can be automated."""
+        if win32com is None:
+            return False
+        # A lightweight check without launching the full app
+        try:
+            win32com.client.Dispatch("Word.Application")
+            return True
+        except Exception:
+            return False
     
     def connect(self) -> bool:
         """
@@ -56,9 +67,9 @@ class WordConverter:
             self.is_connected = False
             return False
     
-    def convert_to_pdf(self, docx_path: str, pdf_path: str) -> bool:
+    def update_fields_and_save_as_pdf(self, docx_path: str, pdf_path: str) -> bool:
         """
-        Convert DOCX file to PDF using the configured rendering engine.
+        Updates fields (like TOC) in a DOCX and then saves it as a PDF.
         
         Args:
             docx_path: Path to input DOCX file
@@ -67,59 +78,46 @@ class WordConverter:
         Returns:
             bool: True if conversion successful, False otherwise
         """
-        if win32com is None:
-            self.logger.error("pywin32 is not installed. Cannot convert DOCX to PDF using Word automation.")
-            return False
-        
         if not self.is_connected:
             if not self.connect():
                 return False
         
         doc: Optional[object] = None
         try:
-            self.logger.info("Converting DOCX to PDF with bookmark generation")
-            self.logger.debug(f"Input: {docx_path}")
-            self.logger.debug(f"Output: {pdf_path}")
-            
-            # Ensure output directory exists
-            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-            
-            # Open the document
-            self.logger.debug(f"Opening document: {os.path.basename(docx_path)}")
+            self.logger.debug(f"  > Opening document: {os.path.basename(docx_path)}")
             doc = self.word_app.Documents.Open(docx_path)
             
-            # Wait a moment for document to fully load
-            time.sleep(0.5)
-            
-            # Export to PDF with bookmark generation
-            self.logger.debug(f"Exporting to PDF: {os.path.basename(pdf_path)}")
+            self.logger.info("  > Updating document fields (e.g., Table of Contents)...")
+            doc.Fields.Update()
+            time.sleep(1) # Give Word a moment to update.
+
+            self.logger.debug(f"  > Exporting to PDF: {os.path.basename(pdf_path)}")
             doc.ExportAsFixedFormat(
                 OutputFileName=pdf_path,
                 ExportFormat=Config.WORD_EXPORT_FORMAT,  # PDF format
                 OpenAfterExport=False,
-                OptimizeFor=0,  # Print optimization - wdExportOptimizeForPrint
-                Range=0,       # Export entire document - wdExportAllDocument
-                Item=0,        # Export document content - wdExportDocumentContent
-                CreateBookmarks=1,  # Create bookmarks from headings - wdExportCreateHeadingBookmarks
-                DocStructureTags=True, # Create document structure tags for accessibility
+                OptimizeFor=0,  # Print optimization
+                Range=0,       # Export entire document
+                Item=0,        # Export document content
+                CreateBookmarks=1,  # Create bookmarks from headings
+                DocStructureTags=True,
                 BitmapMissingFonts=True,
-                UseISO19005_1=False # PDF/A compatibility, can be restrictive
+                UseISO19005_1=False
             )
             
-            self.logger.info(f"Successfully converted '{os.path.basename(docx_path)}' to PDF with bookmarks")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error converting DOCX to PDF: {e}", exc_info=True)
+            self.logger.error(f"  > Error during Word conversion: {e}", exc_info=True)
             return False
             
         finally:
             if doc is not None:
                 try:
                     doc.Close(SaveChanges=False)
-                    self.logger.debug("Document closed")
+                    self.logger.debug("  > Document closed.")
                 except Exception as e:
-                    self.logger.warning(f"Error closing document: {e}")
+                    self.logger.warning(f"  > Error closing document: {e}")
     
     def disconnect(self) -> None:
         """Disconnect from Word application."""

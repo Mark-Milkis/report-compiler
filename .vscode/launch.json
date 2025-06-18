@@ -2,13 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Report Compiler - Example File",
+            "name": "Debug Report Compiler - Parsons Report",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "args": [
-                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
-                "${workspaceFolder}/examples/simple-report/debug_output.pdf"
+                "${workspaceFolder}/examples/parsons-report/parsons-report.docx",
+                "${workspaceFolder}/examples/parsons-report/debug_output.pdf",
+                "--keep-temp",
+                "--debug"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
@@ -19,14 +21,13 @@
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
         },        {
-            "name": "Debug Report Compiler - Example File (Keep Temp)",
+            "name": "Debug Report Compiler - Example File",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "args": [
-                "${workspaceFolder}/examples/parsons-report/parsons-report.docx",
-                "${workspaceFolder}/examples/parsons-report/debug_output.pdf",
-                "--keep-temp"
+                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
+                "${workspaceFolder}/examples/simple-report/debug_output.pdf"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",

@@ -168,3 +168,41 @@ class FileManager:
                 return False
         except (IOError, OSError):
             return True
+    
+    @staticmethod
+    def copy_file(source_path: str, dest_path: str) -> bool:
+        """
+        Copy a file from source to destination.
+
+        Args:
+            source_path: Path to the source file.
+            dest_path: Path to the destination file.
+
+        Returns:
+            True if copy was successful, False otherwise.
+        """
+        import shutil
+        try:
+            shutil.copy2(source_path, dest_path)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def move_file(source_path: str, dest_path: str) -> bool:
+        """
+        Move a file from source to destination.
+
+        Args:
+            source_path: Path to the source file.
+            dest_path: Path to the destination file.
+
+        Returns:
+            True if move was successful, False otherwise.
+        """
+        import shutil
+        try:
+            shutil.move(source_path, dest_path)
+            return True
+        except Exception:
+            return False

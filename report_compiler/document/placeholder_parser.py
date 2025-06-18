@@ -71,41 +71,25 @@ class PlaceholderParser:
                     match = self.overlay_regex.search(cell_text)
                     if match:
                         pdf_path_raw = match.group(1).strip()
-                        params_string = match.group(2)                        
+                        params_string = match.group(2)
+                        
                         # Parse parameters
                         params = self._parse_overlay_parameters(params_string)
                         
-                        self.logger.info("   📋 Found table OVERLAY placeholder #%d:", len(placeholders)+1)
-                        self.logger.info("      • Raw path: %s", pdf_path_raw)
-                        if params['page']:
-                            self.logger.info("      • Page specification: page=%s", params['page'])
-                        self.logger.info("      • Content cropping: %s", 'enabled' if params['crop'] else 'disabled')
-                        self.logger.info("      • Table index: %d", table_idx)
-                        self.logger.info("      • Table type: Single-cell (1x1)")
-                        self.logger.info("      • Cell text: '%s'", cell_text)
-                        
-                        # Get table dimensions
-                        dimensions = self._get_table_dimensions(table, table_idx)
+                        self.logger.info("Found table (overlay) placeholder for: %s", pdf_path_raw)
+                        self.logger.debug("      • Page specification: page=%s", params['page'])
+                        self.logger.debug("      • Content cropping: %s", 'enabled' if params['crop'] else 'disabled')
+                        self.logger.debug("      • Table index: %d", table_idx)
                         
                         table_info = {
-                            'type': 'overlay',
+                            'type': 'table',
                             'pdf_path_raw': pdf_path_raw,
                             'page_spec': params['page'],
                             'crop_enabled': params['crop'],
                             'table_index': table_idx,
                             'table_text': cell_text,
                             'source': f'table_{table_idx}',
-                            'insert_method': 'table'
                         }
-                        
-                        if dimensions:
-                            table_info.update(dimensions)
-                            if 'width_inches' in dimensions and 'height_inches' in dimensions:
-                                self.logger.info("      • Dimensions: %.2f\" x %.2f\"", dimensions['width_inches'], dimensions['height_inches'])
-                            else:
-                                self.logger.info("      • Dimensions: %s", dimensions)
-                        else:
-                            self.logger.warning("      • ⚠️ Could not determine table dimensions")
                         
                         placeholders.append(table_info)
                 
@@ -121,12 +105,11 @@ class PlaceholderParser:
                             break
                     
                     if has_insert:
-                        self.logger.warning("   ⚠️  Multi-cell table #%d (%dx%d) contains placeholder but skipped (not overlay type)", table_idx, rows, cols)
+                        self.logger.warning("Multi-cell table #%d (%dx%d) contains a placeholder but is skipped (not a valid overlay type).", table_idx, rows, cols)
         
         except Exception as e:
-            self.logger.error("   ❌ Error scanning for table placeholders: %s", e, exc_info=True)
+            self.logger.error("Error scanning for table placeholders: %s", e, exc_info=True)
         
-        self.logger.info("   ✅ Found %d table placeholders", len(placeholders))
         return placeholders
     
     def _find_paragraph_placeholders(self) -> List[Dict]:
@@ -147,28 +130,25 @@ class PlaceholderParser:
                 if match:
                     pdf_path_raw = match.group(1).strip()
                     page_spec = match.group(2)  # Optional page specification                    
-                    self.logger.info("   📄 Found paragraph INSERT placeholder #%d:", len(placeholders)+1)
-                    self.logger.info("      • Raw path: %s", pdf_path_raw)
+                    self.logger.info("Found paragraph (merge) placeholder for: %s", pdf_path_raw)
                     if page_spec:
-                        self.logger.info("      • Page specification: %s", page_spec)
-                    self.logger.info("      • Paragraph index: %d", para_idx)
+                        self.logger.debug("      • Page specification: %s", page_spec)
+                    self.logger.debug("      • Paragraph index: %d", para_idx)
                     
                     placeholder_info = {
-                        'type': 'merge',
+                        'type': 'paragraph',
                         'pdf_path_raw': pdf_path_raw,
                         'page_spec': page_spec,
                         'paragraph_index': para_idx,
                         'paragraph_text': para_text,
                         'source': f'paragraph_{para_idx}',
-                        'insert_method': 'merge'
                     }
                     
                     placeholders.append(placeholder_info)
         
         except Exception as e:
-            self.logger.error("   ❌ Error scanning for paragraph placeholders: %s", e, exc_info=True)
+            self.logger.error("Error scanning for paragraph placeholders: %s", e, exc_info=True)
         
-        self.logger.info("   ✅ Found %d paragraph placeholders", len(placeholders))
         return placeholders
     
     def _parse_overlay_parameters(self, params_string: Optional[str]) -> Dict[str, Any]:
@@ -208,65 +188,3 @@ class PlaceholderParser:
                     result['page'] = param
         
         return result
-    
-    def _get_table_dimensions(self, table, table_idx: int) -> Optional[Dict[str, Any]]:
-        """
-        Extract dimensions and position information from a table element.
-        
-        Args:
-            table: python-docx table object
-            table_idx: Index of the table
-            
-        Returns:
-            Dict with width/height information or None
-        """
-        try:
-            dimensions = {}
-            
-            if hasattr(table, '_tbl'):
-                tbl_element = table._tbl
-                tbl_pr = tbl_element.find('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr')
-                
-                if tbl_pr is not None:
-                    # Look for width information
-                    tbl_w = tbl_pr.find('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblW')
-                    if tbl_w is not None:
-                        width_type = tbl_w.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type', 'unknown')
-                        width_val = tbl_w.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}w', 'unknown')
-                        
-                        if width_type == 'dxa' and width_val != 'unknown':
-                            # Convert from twentieths of a point to inches
-                            width_inches = int(width_val) / 1440.0
-                            dimensions['width_inches'] = width_inches
-                            dimensions['width_type'] = width_type
-                            dimensions['width_raw'] = width_val
-            
-            # Try to get column width (alternative method)
-            if 'width_inches' not in dimensions:
-                try:
-                    first_cell = table.rows[0].cells[0]
-                    if hasattr(first_cell, 'width') and first_cell.width:
-                        # Width is in EMU (English Metric Units), convert to inches
-                        width_inches = first_cell.width.inches
-                        dimensions['column_width_inches'] = width_inches
-                except:
-                    pass
-            
-            # Try to get row height
-            try:
-                first_row = table.rows[0]
-                if hasattr(first_row, 'height') and first_row.height:
-                    height_inches = first_row.height.inches
-                    dimensions['row_height_inches'] = height_inches
-            except:
-                pass
-              # Store coordinate metadata for later use
-            self.logger.debug("      📍 Stored coordinate metadata for table %d", table_idx)
-            if dimensions:
-                self.logger.debug("      • Dimensions: %s", dimensions)
-            
-            return dimensions if dimensions else None
-            
-        except Exception as e:
-            self.logger.warning("      ⚠️ Error extracting table dimensions: %s", e)
-            return None
