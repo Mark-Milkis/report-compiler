@@ -69,9 +69,11 @@ class OverlayProcessor:
         """
         try:
             placeholder = data['placeholder']
+            # Use the resolved absolute path, which is guaranteed by the compiler.
             pdf_path = placeholder['resolved_path']
             crop_enabled = placeholder.get('crop_enabled', True)
-            self.logger.info("  Processing overlay %d: %s", idx, placeholder['pdf_path_raw'])
+            # Log the original path for user-facing messages.
+            self.logger.info("  Processing overlay %d: %s", idx, placeholder['file_path'])
 
             # The marker has already been found, its location is in `data`
             page_index = data['page_index']
@@ -131,7 +133,7 @@ class OverlayProcessor:
                 
                 self._overlay_page_content(target_page, source_page, overlay_rect, crop_rect)
 
-            self.logger.info("    ✓ Overlay for %s complete.", placeholder['pdf_path_raw'])
+            self.logger.info("    ✓ Overlay for %s complete.", placeholder['file_path'])
             return True
 
         except Exception as e:
