@@ -142,7 +142,7 @@ class MergeProcessor:
         """Adjusts page numbers and levels for an appendix's TOC entries."""
         adjusted_entries = []
         for level, title, page_num, opts in appendix_toc:
-            new_page_num = (page_num - 1) + page_offset
+            new_page_num = page_num + page_offset  # <-- FIXED: removed -1
             new_level = base_nest_level + level
             adjusted_entries.append([new_level, title, new_page_num, opts])
         return adjusted_entries
