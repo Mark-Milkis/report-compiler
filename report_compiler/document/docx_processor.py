@@ -88,9 +88,11 @@ class DocxProcessor:
                     new_row.height = row_height
                 
                 new_cell = new_row.cells[0]
-                new_cell.text = ''
+                # new_cell.text = ''
                 marker = Config.get_overlay_marker(table_idx, page_num)
-                p = new_cell.add_paragraph(marker)
+                # p = new_cell.add_paragraph(marker)
+                new_cell.paragraphs[0].clear()
+                new_cell.paragraphs[0].add_run(marker)
                 self.logger.debug("        - Added marker for page %d: %s", page_num, marker)
 
         except Exception as e:
@@ -208,9 +210,9 @@ class DocxProcessor:
 
                 # Clear the cell and place the primary marker
                 primary_cell = table.cell(0, 0)
-                primary_cell.text = ''
                 marker = Config.get_overlay_marker(table_idx, page_num=1)
-                primary_cell.add_paragraph(marker)
+                primary_cell.paragraphs[0].clear()
+                primary_cell.paragraphs[0].add_run(marker)
                 self.logger.debug("      - Placed primary marker in table %d: %s", table_idx, marker)
 
                 # Replicate rows for multi-page overlays

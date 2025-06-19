@@ -20,7 +20,8 @@
             },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
-        },        {
+        },
+        {
             "name": "Debug Report Compiler - Example File",
             "type": "debugpy",
             "request": "launch",
@@ -37,7 +38,8 @@
             },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
-        },        {
+        },
+        {
             "name": "Debug Report Compiler - Custom Input",
             "type": "debugpy",
             "request": "launch",
@@ -54,25 +56,8 @@
             },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
-        },        {
-            "name": "Debug Report Compiler - Step Into All Code",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "args": [
-                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
-                "${workspaceFolder}/examples/simple-report/debug_detailed.pdf",
-                "--keep-temp"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "stopOnEntry": true,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "justMyCode": false,
-            "python": "${command:python.interpreterPath}"
-        },        {
+        },
+        {
             "name": "Debug Report Compiler - Error Testing",
             "type": "debugpy",
             "request": "launch",
