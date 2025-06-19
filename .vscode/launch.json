@@ -22,6 +22,26 @@
             "python": "${command:python.interpreterPath}"
         },
         {
+            "name": "Debug Report Compiler - Master Report",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": [
+                "${workspaceFolder}/examples/Master Report.docx",
+                "${workspaceFolder}/examples/master_debug_output.pdf",
+                "--keep-temp",
+                "--debug"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": true,
+            "python": "${command:python.interpreterPath}"
+        },
+        {
             "name": "Debug Report Compiler - Example File",
             "type": "debugpy",
             "request": "launch",
