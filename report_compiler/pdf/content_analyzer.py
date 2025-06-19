@@ -204,3 +204,32 @@ class ContentAnalyzer:
                 annot.update(flags=fitz.ANNOT_FLAG_PRINT)
                 # Deleting the annotation removes the interactive element
                 page.delete_annot(annot)
+
+    def analyze(self, pdf_path: str, placeholders: dict[str, Any], table_metadata: dict[int, Any]) -> Optional[tuple[dict[str, Any], list[int]]]:
+        """
+        Analyzes the PDF to find all markers and the table of contents.
+
+        Args:
+            pdf_path: Path to the PDF file.
+            placeholders: Dictionary of placeholders.
+            table_metadata: Dictionary of table metadata.
+
+        Returns:
+            A tuple containing the content_map and a list of TOC page indices, or None on failure.
+        """
+        self.logger.info("  > Starting PDF analysis...")
+        
+        try:
+            toc_pages = self.find_toc_pages(pdf_path)
+            self.logger.info("  > Found %d Table of Contents pages.", len(toc_pages))
+
+            content_map = self.find_placeholder_markers(pdf_path, placeholders, table_metadata)
+            if not content_map and placeholders.get('total', 0) > 0:
+                # This can happen if the DOCX modification failed to insert markers, or if they were removed during PDF conversion.
+                self.logger.warning("  > ⚠️ No markers were found in the PDF, but placeholders were expected. Downstream processing may fail.")
+
+            self.logger.info("  > PDF analysis complete.")
+            return content_map, toc_pages
+        except Exception as e:
+            self.logger.error("❌ Top-level error during PDF analysis: %s", e, exc_info=True)
+            return None

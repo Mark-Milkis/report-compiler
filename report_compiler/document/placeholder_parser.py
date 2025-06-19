@@ -70,25 +70,26 @@ class PlaceholderParser:
                     # Check if this cell contains an OVERLAY placeholder
                     match = self.overlay_regex.search(cell_text)
                     if match:
-                        pdf_path_raw = match.group(1).strip()
+                        path_raw = match.group(1).strip()
                         params_string = match.group(2)
                         
                         # Parse parameters
                         params = self._parse_overlay_parameters(params_string)
                         
-                        self.logger.info("Found table (overlay) placeholder for: %s", pdf_path_raw)
+                        self.logger.info("Found table (overlay) placeholder for: %s", path_raw)
                         self.logger.debug("      • Page specification: page=%s", params['page'])
                         self.logger.debug("      • Content cropping: %s", 'enabled' if params['crop'] else 'disabled')
                         self.logger.debug("      • Table index: %d", table_idx)
                         
                         table_info = {
                             'type': 'table',
-                            'pdf_path_raw': pdf_path_raw,
+                            'file_path': path_raw,
                             'page_spec': params['page'],
                             'crop_enabled': params['crop'],
                             'table_index': table_idx,
                             'table_text': cell_text,
                             'source': f'table_{table_idx}',
+                            'is_recursive_docx': False, # Overlays cannot be recursive
                         }
                         
                         placeholders.append(table_info)
@@ -128,17 +129,28 @@ class PlaceholderParser:
                 # Look for INSERT placeholders (merge type)
                 match = self.insert_regex.search(para_text)
                 if match:
-                    pdf_path_raw = match.group(1).strip()
-                    page_spec = match.group(2)  # Optional page specification                    
-                    self.logger.info("Found paragraph (merge) placeholder for: %s", pdf_path_raw)
-                    if page_spec:
-                        self.logger.debug("      • Page specification: %s", page_spec)
+                    file_path_raw = match.group(1).strip()
+                    page_spec = match.group(2)  # Optional page specification
+                    
+                    is_docx = file_path_raw.lower().endswith('.docx')
+
+                    if is_docx:
+                        self.logger.info("Found recursive DOCX insert placeholder for: %s", file_path_raw)
+                        if page_spec:
+                            self.logger.warning("      • Page specification '%s' is ignored for DOCX inserts.", page_spec)
+                            page_spec = None
+                    else:
+                        self.logger.info("Found paragraph (merge) placeholder for: %s", file_path_raw)
+                        if page_spec:
+                            self.logger.debug("      • Page specification: %s", page_spec)
+
                     self.logger.debug("      • Paragraph index: %d", para_idx)
                     
                     placeholder_info = {
                         'type': 'paragraph',
-                        'pdf_path_raw': pdf_path_raw,
+                        'file_path': file_path_raw,
                         'page_spec': page_spec,
+                        'is_recursive_docx': is_docx,
                         'paragraph_index': para_idx,
                         'paragraph_text': para_text,
                         'source': f'paragraph_{para_idx}',

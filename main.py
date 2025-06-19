@@ -34,8 +34,10 @@ Placeholder Types:
   [[OVERLAY: path/file.pdf, crop=false]]  - Overlay without content cropping
   [[INSERT: path/file.pdf]]         - Paragraph-based merge (full document)
   [[INSERT: path/file.pdf:1-3,7]]   - Insert specific pages only
+  [[INSERT: path/file.docx]]        - Recursively compile and insert a DOCX file
 
 Features:
+  • Recursive compilation of DOCX files
   • Content-aware cropping with border preservation
   • Multi-page overlay support with automatic table replication
   • Comprehensive validation and error reporting

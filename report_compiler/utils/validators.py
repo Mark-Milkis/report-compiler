@@ -210,16 +210,23 @@ class Validators:
         }
 
         for placeholder in placeholders:
-            pdf_path_raw = placeholder.get('pdf_path_raw')
-            if not pdf_path_raw:
-                msg = f"Placeholder is missing 'pdf_path_raw': {placeholder}"
+            file_path_raw = placeholder.get('file_path')
+            if not file_path_raw:
+                msg = f"Placeholder is missing 'file_path': {placeholder}"
                 result['errors'].append(msg)
                 result['valid'] = False
                 continue
 
-            path_validation = self.validate_pdf_path(pdf_path_raw, base_directory)
+            if placeholder.get('is_recursive_docx'):
+                # This should not happen if resolution is done before validation.
+                msg = f"Unresolved recursive DOCX placeholder found during validation: {file_path_raw}"
+                result['errors'].append(msg)
+                result['valid'] = False
+                continue
+
+            path_validation = self.validate_pdf_path(file_path_raw, base_directory)
             if not path_validation['valid']:
-                msg = f"Invalid PDF in placeholder '{pdf_path_raw}': {path_validation['error_message']}"
+                msg = f"Invalid PDF in placeholder '{file_path_raw}': {path_validation['error_message']}"
                 result['errors'].append(msg)
                 result['valid'] = False
                 continue
@@ -251,8 +258,8 @@ class Validators:
             'warnings': [],
         }
         
-        overlay_paths = [p.get('pdf_path_raw', '') for p in placeholders if p.get('type') == 'overlay']
-        merge_paths = [p.get('pdf_path_raw', '') for p in placeholders if p.get('type') == 'merge']
+        overlay_paths = [p.get('file_path', '') for p in placeholders if p.get('type') == 'table']
+        merge_paths = [p.get('file_path', '') for p in placeholders if p.get('type') == 'paragraph']
         
         # Check for duplicate paths
         all_paths = overlay_paths + merge_paths
