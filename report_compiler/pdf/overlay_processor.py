@@ -103,6 +103,8 @@ class OverlayProcessor:
             # Open source PDF
             self.logger.debug("    > Opening source PDF: %s", pdf_path)
             with fitz.open(pdf_path) as source_doc:
+                self.content_analyzer.bake_annotations(source_doc)
+
                 # Determine which pages from the source PDF are requested
                 page_spec = placeholder.get('page_spec')
                 page_selection = self.page_selector.parse_specification(page_spec)
