@@ -199,11 +199,15 @@ class ContentAnalyzer:
         """Applies all annotations (comments, highlights) permanently to the pages."""
         self.logger.debug("  > Baking annotations for %d pages...", len(pdf_doc))
         for page in pdf_doc:
-            for annot in page.annots():
-                # Applying the annotation renders it onto the page content
-                annot.update(flags=fitz.ANNOT_FLAG_PRINT)
-                # Deleting the annotation removes the interactive element
-                page.delete_annot(annot)
+            pdf_doc.bake(annots=True)  # Apply all annotations to the page
+            self.logger.debug("    - Baked annotations for page %d", page.number + 1)
+
+
+            # for annot in page.annots():
+            #     # Applying the annotation renders it onto the page content
+            #     annot.update(flags=fitz.ANNOT_FLAG_PRINT)
+            #     # Deleting the annotation removes the interactive element
+            #     page.delete_annot(annot)
 
     def analyze(self, pdf_path: str, placeholders: dict[str, Any], table_metadata: dict[int, Any]) -> Optional[tuple[dict[str, Any], list[int]]]:
         """
