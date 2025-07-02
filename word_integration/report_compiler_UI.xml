@@ -1,0 +1,36 @@
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
+  <ribbon>
+    <tabs>
+      <tab id="customTabReportingTools" label="Reporting Tools">
+        
+        <group id="groupPlaceholders" label="Placeholders">
+          <button id="btnInsertAppendix"
+                  label="Insert Appendix"
+                  size="large"
+                  onAction="InsertAppendixPlaceholder"
+                  image="insert-appendix"
+                  screentip="Insert Appendix Placeholder"
+                  supertip="Inserts a placeholder for a multi-page PDF that will be merged into the report."/>
+          <button id="btnInsertOverlay"
+                  label="Insert Overlay"
+                  size="large"
+                  onAction="InsertOverlayPlaceholder"
+                  image="insert-overlay"
+                  screentip="Insert Overlay Placeholder"
+                  supertip="Inserts a 1x1 table placeholder for overlaying a PDF page."/>
+        </group>
+        
+        <group id="groupCompiler" label="Compiler">
+          <button id="btnCompileReport"
+                  label="Compile Report"
+                  size="large"
+                  onAction="RunReportCompiler"
+                  image="compile-report"
+                  screentip="Compile Report"
+                  supertip="Saves the document and runs the Python script to generate the final PDF report."/>
+        </group>
+        
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
