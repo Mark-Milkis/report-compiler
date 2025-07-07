@@ -118,14 +118,7 @@ End Sub
 Public Sub InsertPdfAsSvg(control As IRibbonControl)
     ' Converts a PDF page to SVG and inserts it as an image.
     
-    ' --- CONFIGURATION: CHOOSE ONE ---
-    ' For a deployed version (packaged .exe)
-    ' Const COMPILER_PATH As String = "C:\Path\To\YourCompiler.exe"
-    
-    ' For development (running the raw Python script)
-    Const COMPILER_PATH As String = "python C:\Users\p005452g\Source\report-compiler\main.py"
-    ' ---------------------------------
-    
+    Dim COMPILER_PATH As String
     Dim pdfPath As String
     Dim pageNumber As String
     Dim intPageNumber As Integer
@@ -136,6 +129,10 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     Dim fso As Object
     Dim i As Integer
     Dim maxWait As Integer
+    
+    ' Get the compiler path and validate it exists
+    COMPILER_PATH = GetCompilerPath()
+    If COMPILER_PATH = "" Then Exit Sub ' Error already shown by GetCompilerPath
     
     Set doc = ActiveDocument
     
@@ -175,16 +172,16 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     tempSvgPath = tempSvgFolder & "\page.svg"
     
     ' Build the command string for SVG conversion
-    cmdString = COMPILER_PATH & " --action svg_import --page " & pageNumber & " " & _
+    cmdString = Chr(34) & COMPILER_PATH & Chr(34) & " --action svg_import --page " & pageNumber & " " & _
                 Chr(34) & pdfPath & Chr(34) & " " & Chr(34) & tempSvgPath & Chr(34)
     
-    debug.Print "Executing command: " & cmdString
+    Debug.Print "Executing command: " & cmdString
 
     ' Execute the conversion command
     On Error Resume Next
     Shell cmdString, vbHide
     If Err.Number <> 0 Then
-        MsgBox "Failed to start the PDF to SVG converter. Please check the COMPILER_PATH constant.", vbCritical, "Execution Error"
+        MsgBox "Failed to start the PDF to SVG converter. Please check that report-compiler.exe is accessible.", vbCritical, "Execution Error"
         On Error GoTo 0
         GoTo Cleanup
     End If
@@ -277,18 +274,15 @@ End Sub
 Public Sub RunReportCompiler(control As IRibbonControl)
     ' Saves the active document and executes the Python compiler script.
     
-    ' --- CONFIGURATION: CHOOSE ONE ---
-    ' For a deployed version (packaged .exe)
-    ' Const COMPILER_PATH As String = "C:\Path\To\YourCompiler.exe"
-    
-    ' For development (running the raw Python script)
-    Const COMPILER_PATH As String = "python C:\Users\p005452g\Source\report-compiler\main.py"
-    ' ---------------------------------
-    
+    Dim COMPILER_PATH As String
     Dim doc As Document
     Dim inputPath As String
     Dim outputPath As String
     Dim cmdString As String
+    
+    ' Get the compiler path and validate it exists
+    COMPILER_PATH = GetCompilerPath()
+    If COMPILER_PATH = "" Then Exit Sub ' Error already shown by GetCompilerPath
     
     Set doc = ActiveDocument
     
@@ -306,13 +300,13 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     outputPath = Replace(doc.FullName, ".docx", ".pdf")
     
     ' Build the command string for the shell. Paths are wrapped in quotes.
-    cmdString = COMPILER_PATH & " " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
+    cmdString = Chr(34) & COMPILER_PATH & Chr(34) & " " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
     
     ' Execute the command. vbHide prevents the command window from flashing.
     On Error Resume Next
     Shell cmdString, vbHide
     If Err.Number <> 0 Then
-        MsgBox "Failed to start the compiler. Please check the COMPILER_PATH constant in the 'RunReportCompiler' macro.", vbCritical, "Execution Error"
+        MsgBox "Failed to start the compiler. Please check that report-compiler.exe is accessible.", vbCritical, "Execution Error"
         On Error GoTo 0
         Exit Sub
     End If
@@ -327,6 +321,35 @@ End Sub
 '--------------------------------------------------------------------------------------------------
 ' PRIVATE HELPER FUNCTIONS
 '--------------------------------------------------------------------------------------------------
+
+Private Function GetCompilerPath() As String
+    ' Gets the path to the report compiler executable and validates it exists.
+    ' Returns the full path if found, or an empty string if not found (with error message shown).
+    
+    Dim templateDir As String
+    Dim compilerPath As String
+    
+    ' Get the directory where the template is located
+    templateDir = ThisDocument.Path
+    If templateDir = "" Then
+        MsgBox "Cannot determine template location. Please ensure the template is saved.", vbCritical, "Template Error"
+        GetCompilerPath = ""
+        Exit Function
+    End If
+    
+    ' Set the compiler path relative to the template location
+    compilerPath = templateDir & "\report-compiler.exe"
+    
+    ' Check if the executable exists
+    If Dir(compilerPath) = "" Then
+        MsgBox "Report compiler executable not found at: " & vbCrLf & compilerPath & vbCrLf & vbCrLf & _
+               "Please ensure report-compiler.exe is in the same folder as the template.", vbCritical, "Executable Not Found"
+        GetCompilerPath = ""
+        Exit Function
+    End If
+    
+    GetCompilerPath = compilerPath
+End Function
 
 Private Function GetPdfPath() As String
     ' Opens a file picker dialog for the user to select a PDF file.

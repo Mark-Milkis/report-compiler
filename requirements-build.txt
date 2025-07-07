@@ -1,0 +1,3 @@
+# Additional requirements for building with PyInstaller
+pyinstaller>=5.0
+pillow  # For icon conversion if needed

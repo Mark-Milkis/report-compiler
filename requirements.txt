@@ -4,3 +4,6 @@ pywin32; platform_system == "Windows"
 tqdm
 pymupdf>=1.19.0
 python-docx
+
+# For building Windows executable with PyInstaller, also install:
+# pip install -r requirements-build.txt
