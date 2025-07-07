@@ -302,9 +302,9 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     ' Build the command string for the shell. Paths are wrapped in quotes.
     cmdString = Chr(34) & COMPILER_PATH & Chr(34) & " " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
     
-    ' Execute the command. vbHide prevents the command window from flashing.
+    ' Execute the command. vbNormalFocus shows the console window so users can see progress.
     On Error Resume Next
-    Shell cmdString, vbHide
+    Shell cmdString, vbNormalFocus
     If Err.Number <> 0 Then
         MsgBox "Failed to start the compiler. Please check that report-compiler.exe is accessible.", vbCritical, "Execution Error"
         On Error GoTo 0
@@ -313,7 +313,7 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     On Error GoTo 0
     
     ' Inform the user that the process has started.
-    MsgBox "The report compiler has been started. This may take a moment. You will see the final PDF when it is complete.", vbInformation, "Compiler Started"
+    MsgBox "The report compiler has been started. You can monitor its progress in the console window.", vbInformation, "Compiler Started"
     
 End Sub
 
