@@ -1,0 +1,34 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- 
+    Icon: PDF to SVG Import
+    Description: A PDF document being converted into a document containing a vector image.
+  -->
+   <defs>
+    <linearGradient id="fluent-red-gradient-import" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F44336;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D32F2F;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="fluent-green-gradient-import" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#66BB6A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#388E3C;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <g>
+    <!-- Source PDF Icon -->
+    <path d="M12,26 C9.79,26 8,27.79 8,30 L8,98 C8,100.21 9.79,102 12,102 L48,102 C50.21,102 52,100.21 52,98 L52,44 L34,26 L12,26 Z" fill="url(#fluent-red-gradient-import)" />
+    <path d="M52,44 L34,44 C32.9,44 32,43.1 32,42 L32,26 L34,26 L52,44 Z" fill="#B71C1C" opacity="0.5"/>
+    <text x="15" y="92" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="white">PDF</text>
+
+
+    <!-- Destination SVG/Image Document Icon -->
+    <path d="M76,26 C73.79,26 72,27.79 72,30 L72,98 C72,100.21 73.79,102 76,102 L112,102 C114.21,102 116,100.21 116,98 L116,44 L98,26 L76,26 Z" fill="url(#fluent-green-gradient-import)" />
+    <path d="M116,44 L98,44 C96.9,44 96,43.1 96,42 L96,26 L98,26 L116,44 Z" fill="#1B5E20" opacity="0.5"/>
+    <!-- Simple vector landscape inside the destination document -->
+    <circle cx="86" cy="80" r="4" fill="white" opacity="0.9"/>
+    <path d="M82 92 L94 80 L106 92 Z" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>
+    
+    <!-- Process Arrow (drawn last to be in front) -->
+    <path d="M56,56 L70,56 L70,48 L82,64 L70,80 L70,72 L56,72 Z" fill="#757575"/>
+  </g>
+</svg>

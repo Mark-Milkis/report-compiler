@@ -18,6 +18,13 @@
                   image="insert-overlay"
                   screentip="Insert Overlay Placeholder"
                   supertip="Inserts a 1x1 table placeholder for overlaying a PDF page."/>
+          <button id="btnInsertPdfAsSvg"
+                  label="Insert PDF Page (Image)"
+                  size="large"
+                  onAction="InsertPdfAsSvg"
+                  image="pdf-to-svg"
+                  screentip="Insert PDF Page as SVG Image"
+                  supertip="Converts a single PDF page to high-quality SVG and inserts it as an image."/>
         </group>
         
         <group id="groupCompiler" label="Compiler">
