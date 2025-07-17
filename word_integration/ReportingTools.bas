@@ -167,7 +167,7 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     tempSvgPath = tempSvgFolder & "\page.svg"
     
     ' Build the command string for SVG conversion
-    cmdString = "uvx report-compiler --action svg_import --page " & pageNumber & " " & _
+    cmdString = "uvx report-compiler svg-import --page " & pageNumber & " " & _
                 Chr(34) & pdfPath & Chr(34) & " " & Chr(34) & tempSvgPath & Chr(34)
     
     Debug.Print "Executing command: " & cmdString
