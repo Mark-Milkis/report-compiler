@@ -80,13 +80,13 @@ pip install -r requirements.txt
 ### Basic Usage
 
 ```bash
-python main_refactored.py input_report.docx output_report.pdf
+report-compiler compile input_report.docx output_report.pdf
 ```
 
 ### Debug Mode (with temp files)
 
 ```bash
-python main_refactored.py input_report.docx output_report.pdf --keep-temp
+report-compiler compile input_report.docx output_report.pdf --keep-temp
 ```
 
 ## Placeholder Format

@@ -5,7 +5,7 @@
             "name": "Debug Report Compiler - Parsons Report",
             "type": "debugpy",
             "request": "launch",
-            "module": "report_compiler.cli",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${workspaceFolder}/examples/parsons-report/parsons-report.docx",
                 "${workspaceFolder}/examples/parsons-report/debug_output.pdf",
@@ -15,6 +15,9 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
         },
@@ -22,7 +25,7 @@
             "name": "Debug Report Compiler - Master Report",
             "type": "debugpy",
             "request": "launch",
-            "module": "report_compiler.cli",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${workspaceFolder}/examples/Master Report.docx",
                 "${workspaceFolder}/examples/master_debug_output.pdf",
@@ -32,6 +35,9 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
         },
@@ -39,7 +45,7 @@
             "name": "Debug Report Compiler - Example File",
             "type": "debugpy",
             "request": "launch",
-            "module": "report_compiler.cli",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${workspaceFolder}/examples/simple-report/bridge_report.docx",
                 "${workspaceFolder}/examples/simple-report/debug_output.pdf"
@@ -47,6 +53,9 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
         },
@@ -54,7 +63,7 @@
             "name": "Debug Report Compiler - Custom Input",
             "type": "debugpy",
             "request": "launch",
-            "module": "report_compiler.cli",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "${input:docxFile}",
                 "${input:outputPdf}"
@@ -62,6 +71,9 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
         },
@@ -69,7 +81,7 @@
             "name": "Debug Report Compiler - Error Testing",
             "type": "debugpy",
             "request": "launch",
-            "module": "report_compiler.cli",
+            "program": "${workspaceFolder}/main.py",
             "args": [
                 "nonexistent_file.docx",
                 "test_error.pdf"
@@ -77,6 +89,27 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": true,
+            "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "Debug Legacy Report Compiler - Cross-Check",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/report_compiler_legacy.py",
+            "args": [
+                "${workspaceFolder}/examples/simple-report/bridge_report.docx",
+                "${workspaceFolder}/examples/simple-report/legacy_debug_output.pdf"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "justMyCode": true,
             "python": "${command:python.interpreterPath}"
         }

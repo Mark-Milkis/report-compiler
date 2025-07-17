@@ -3,26 +3,24 @@
 Report Compiler - CLI logic.
 """
 
-import argparse
 import sys
 import os
 from pathlib import Path
+import typer
 
 from report_compiler.core.compiler import ReportCompiler
 from report_compiler.core.config import Config
 from report_compiler.utils.logging_config import setup_logging, get_logger
 from report_compiler.utils.pdf_to_svg import PdfToSvgConverter
 
-def main():
-    """Main CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description='Report Compiler v2.0 - Compile DOCX documents with embedded PDF placeholders',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+app = typer.Typer(
+    help="""
+Report Compiler v2.0 - Compile DOCX documents with embedded PDF placeholders
+
 Examples:
-  %(prog)s report.docx final_report.pdf
-  %(prog)s report.docx output.pdf --keep-temp
-  %(prog)s --action svg_import input.pdf output.svg --page 3
+  report-compiler report.docx final_report.pdf
+  report-compiler report.docx output.pdf --keep-temp
+  report-compiler svg-import input.pdf output.svg --page 3
 
 Placeholder Types:
   [[OVERLAY: path/file.pdf]]        - Table-based overlay (precise positioning)
@@ -31,43 +29,72 @@ Placeholder Types:
   [[INSERT: path/file.pdf:1-3,7]]   - Insert specific pages only
   [[INSERT: path/file.docx]]        - Recursively compile and insert a DOCX file
 
-Actions:
-  compile    - (Default) Compile DOCX to PDF
-  svg_import - Convert single or multiple PDF pages to high-quality SVG format
-
 Features:
   • Recursive compilation of DOCX files
   • Content-aware cropping with border preservation
   • Multi-page overlay support with automatic table replication
   • High-quality PDF to SVG conversion for single or multiple pages
   • Comprehensive validation and error reporting
-        """)
+    """
+)
 
-    parser.add_argument('input_file', help='Input DOCX file path (or PDF file path when using --action svg_import)')
-    parser.add_argument('output_file', help='Output PDF file path (or SVG file path when using --action svg_import)')
-    parser.add_argument('--keep-temp', action='store_true', help='Keep temporary files for debugging')
-    parser.add_argument('--verbose', '-v', '--debug', action='store_true', help='Enable verbose logging (DEBUG level)')
-    parser.add_argument('--log-file', help='Log to file in addition to console')
-    parser.add_argument('--action', choices=['compile', 'svg_import'], default='compile', help='Action to perform: compile DOCX to PDF or convert PDF page to SVG')
-    parser.add_argument('--page', type=str, default='all', help='Page(s) to convert: single number, range (1-3), list (1,3,5), or "all" (for svg_import action)')
-    parser.add_argument('--version', action='version', version=f'Report Compiler v{Config.__version__ if hasattr(Config, "__version__") else "2.0.0"}')
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"Report Compiler v{getattr(Config, '__version__', 'Unknown')}")
+        raise typer.Exit()
 
-    # Parse arguments
-    args = parser.parse_args()
-
-    # Setup logging
-    setup_logging(log_file=args.log_file, verbose=args.verbose)
-
+@app.command("compile")
+def compile_docx(
+    input_file: str = typer.Argument(..., help="Input DOCX file path"),
+    output_file: str = typer.Argument(..., help="Output PDF file path"),
+    keep_temp: bool = typer.Option(False, help="Keep temporary files for debugging"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console"),
+    version: bool = typer.Option(False, "--version", callback=version_callback, is_eager=True, help="Show version and exit")
+):
+    """Compile DOCX to PDF."""
+    setup_logging(log_file=log_file, verbose=verbose)
     logger = get_logger()
     logger.info("=" * 60)
     logger.info("Report Compiler v2.0 - Starting compilation")
     logger.info("=" * 60)
-    
-    # Handle different actions
-    if args.action == 'svg_import':
-        return handle_svg_import(args, logger)
-    else:
-        return handle_compilation(args, logger)
+    class Args:
+        def __init__(self, input_file, output_file, keep_temp, verbose, log_file):
+            self.input_file = input_file
+            self.output_file = output_file
+            self.keep_temp = keep_temp
+            self.verbose = verbose
+            self.log_file = log_file
+    args = Args(input_file, output_file, keep_temp, verbose, log_file)
+    return handle_compilation(args, logger)
+
+@app.command("svg-import")
+def svg_import(
+    input_file: str = typer.Argument(..., help="Input PDF file path"),
+    output_file: str = typer.Argument(..., help="Output SVG file path"),
+    page: str = typer.Option("all", help="Page(s) to convert: single number, range (1-3), list (1,3,5), or 'all'"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console"),
+    version: bool = typer.Option(False, "--version", callback=version_callback, is_eager=True, help="Show version and exit")
+):
+    """Convert PDF page(s) to SVG format."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    logger.info("=" * 60)
+    logger.info("Report Compiler v2.0 - Starting PDF to SVG conversion")
+    logger.info("=" * 60)
+    class Args:
+        def __init__(self, input_file, output_file, page, verbose, log_file):
+            self.input_file = input_file
+            self.output_file = output_file
+            self.page = page
+            self.verbose = verbose
+            self.log_file = log_file
+    args = Args(input_file, output_file, page, verbose, log_file)
+    return handle_svg_import(args, logger)
+
+def main():
+    app()
 
 def handle_svg_import(args, logger) -> int:
     """Handle PDF to SVG conversion."""

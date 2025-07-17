@@ -20,7 +20,8 @@ dependencies = [
     "comtypes>=1.2.1",
     "Pillow>=10.2.0",
     "python-docx>=1.1.0",
-    "PyMuPDF>=1.23.26",
+    "PyMuPDF>=1.26.3",
+    "typer>=0.9.0",
     "pywin32; sys_platform == 'win32'"
 ]
 

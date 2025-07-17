@@ -290,7 +290,7 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     outputPath = Replace(doc.FullName, ".docx", ".pdf")
     
     ' Build the command string for the shell. Paths are wrapped in quotes.
-    cmdString = "uvx report-compiler " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
+    cmdString = "uvx report-compiler compile " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
     
     ' Execute the command. vbNormalFocus shows the console window so users can see progress.
     On Error Resume Next
