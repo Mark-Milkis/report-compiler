@@ -7,7 +7,6 @@ from typing import Dict, Any, Optional
 
 
 class Config:
-    __version__ = "0.1.0"
     """Configuration class containing all constants and settings for the report compiler."""
     
     # Regex patterns for placeholder detection

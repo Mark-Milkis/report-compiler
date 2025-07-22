@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "report_compiler"
-version = "0.1.0"
+name = "report-compiler"
+dynamic = ["version"]
 authors = [
   { name="YOUR NAME", email="your@email.com" },
 ]
@@ -27,3 +27,6 @@ dependencies = [
 
 [project.scripts]
 report-compiler = "report_compiler.cli:main"
+
+[tool.setuptools_scm]
+write_to = "src/report_compiler/_version.py"

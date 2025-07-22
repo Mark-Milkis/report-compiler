@@ -12,10 +12,11 @@ from report_compiler.core.compiler import ReportCompiler
 from report_compiler.core.config import Config
 from report_compiler.utils.logging_config import setup_logging, get_logger
 from report_compiler.utils.pdf_to_svg import PdfToSvgConverter
+from report_compiler import __version__
 
 app = typer.Typer(
-    help="""
-Report Compiler v2.0 - Compile DOCX documents with embedded PDF placeholders
+    help=f"""
+Report Compiler v{__version__} - Compile DOCX documents with embedded PDF placeholders
 
 Examples:
   report-compiler report.docx final_report.pdf
@@ -40,7 +41,7 @@ Features:
 
 def version_callback(value: bool):
     if value:
-        typer.echo(f"Report Compiler v{getattr(Config, '__version__', 'Unknown')}")
+        typer.echo(f"Report Compiler v{__version__}")
         raise typer.Exit()
 
 @app.command("compile")
@@ -56,7 +57,7 @@ def compile_docx(
     setup_logging(log_file=log_file, verbose=verbose)
     logger = get_logger()
     logger.info("=" * 60)
-    logger.info("Report Compiler v2.0 - Starting compilation")
+    logger.info(f"Report Compiler v{__version__} - Starting compilation")
     logger.info("=" * 60)
     class Args:
         def __init__(self, input_file, output_file, keep_temp, verbose, log_file):
@@ -81,7 +82,7 @@ def svg_import(
     setup_logging(log_file=log_file, verbose=verbose)
     logger = get_logger()
     logger.info("=" * 60)
-    logger.info("Report Compiler v2.0 - Starting PDF to SVG conversion")
+    logger.info(f"Report Compiler v{__version__} - Starting PDF to SVG conversion")
     logger.info("=" * 60)
     class Args:
         def __init__(self, input_file, output_file, page, verbose, log_file):

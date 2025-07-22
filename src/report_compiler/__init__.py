@@ -5,7 +5,13 @@ This package provides functionality to compile Word documents with embedded PDF 
 into professional PDF reports with precise overlay positioning and merged appendices.
 """
 
-__version__ = "2.0.0"
+
+# Try to import the version from the auto-generated file by setuptools-scm
+try:
+    from ._version import version as __version__
+except ImportError:
+    # Fallback for when the package is not installed
+    __version__ = "0.0.0-dev"
 __author__ = "Report Compiler Team"
 
 # from .core.compiler import ReportCompiler  # Temporarily commented
