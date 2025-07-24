@@ -73,26 +73,26 @@ jobs:
         with:
           packages-dir: dist/
 
-  release-asset-upload:
-    runs-on: ubuntu-latest
-    permissions:
-      # This permission is required to allow the action to write to your release
-      contents: write
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0       
+  # release-asset-upload:
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     # This permission is required to allow the action to write to your release
+  #     contents: write
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       fetch-depth: 0       
 
-    - name: Upload release assets
-      uses: actions/upload-release-asset@v1
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
+  #   - name: Upload release assets
+  #     uses: actions/upload-release-asset@v1
+  #     with:
+  #       upload_url: ${{ github.event.release.upload_url }}
         
-        # This is the path to the file you want to upload
-        asset_path: word_integration/ReportCompilerTemplate.dotm
+  #       # This is the path to the file you want to upload
+  #       asset_path: word_integration/ReportCompilerTemplate.dotm
 
-        # This is the name the file will have in the release assets
-        asset_name: ReportCompilerTemplate.dotm
+  #       # This is the name the file will have in the release assets
+  #       asset_name: ReportCompilerTemplate.dotm
 
-        # This is the MIME type for a macro-enabled Word template
-        asset_content_type: application/vnd.ms-word.template.macroEnabled.12
+  #       # This is the MIME type for a macro-enabled Word template
+  #       asset_content_type: application/vnd.ms-word.template.macroEnabled.12
