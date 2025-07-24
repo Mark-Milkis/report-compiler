@@ -182,10 +182,15 @@ class FileManager:
             True if copy was successful, False otherwise.
         """
         import shutil
+        logger = get_file_logger()
         try:
+            # Ensure destination directory exists
+            FileManager.ensure_directory_exists(dest_path)
             shutil.copy2(source_path, dest_path)
+            logger.debug(f"Successfully copied file from {source_path} to {dest_path}")
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to copy file from {source_path} to {dest_path}: {e}")
             return False
 
     @staticmethod
@@ -201,8 +206,13 @@ class FileManager:
             True if move was successful, False otherwise.
         """
         import shutil
+        logger = get_file_logger()
         try:
+            # Ensure destination directory exists
+            FileManager.ensure_directory_exists(dest_path)
             shutil.move(source_path, dest_path)
+            logger.debug(f"Successfully moved file from {source_path} to {dest_path}")
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to move file from {source_path} to {dest_path}: {e}")
             return False

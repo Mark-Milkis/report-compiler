@@ -113,6 +113,7 @@ class ReportCompiler:
         """The core sequence of compilation steps."""
         if not self._initialize(): return False
         if not self._validate_paths(): return False
+        if not self._copy_input_to_temp(): return False
         if not self._find_placeholders(): return False
         if not self._resolve_docx_inserts(processed_files): return False
         if not self._validate_placeholders(): return False
@@ -127,8 +128,8 @@ class ReportCompiler:
         return True
 
     def _initialize(self) -> bool:
-        """[Stage 1/11: Initialization] Set up temporary file paths and initial state."""
-        self.logger.info(f"{self._log_prefix()}[Stage 1/11: Initialization]")
+        """[Stage 1/12: Initialization] Set up temporary file paths and initial state."""
+        self.logger.info(f"{self._log_prefix()}[Stage 1/12: Initialization]")
         self.temp_docx_path = self.file_manager.generate_temp_path(self.input_path, "modified_report")
         # Use a more specific name for the base PDF to avoid collisions in recursion
         base_pdf_suffix = f"base_{self.recursion_level}"
@@ -144,8 +145,8 @@ class ReportCompiler:
         return True
 
     def _validate_paths(self) -> bool:
-        """[Stage 2/11: Path Validation] Validate input and output paths."""
-        self.logger.info(f"{self._log_prefix()}[Stage 2/11: Path Validation]")
+        """[Stage 2/12: Path Validation] Validate input and output paths."""
+        self.logger.info(f"{self._log_prefix()}[Stage 2/12: Path Validation]")
         
         self.logger.debug(f"{self._log_prefix()}  > Validating source DOCX file...")
         docx_result = self.validators.validate_docx_path(self.input_path)
@@ -164,20 +165,74 @@ class ReportCompiler:
         self.logger.debug(f"{self._log_prefix()}  > Output path is valid.")
         return True
 
+    def _copy_input_to_temp(self) -> bool:
+        """[Stage 3/12: Copy Input] Copy input DOCX to temp location to avoid file locking issues."""
+        self.logger.info(f"{self._log_prefix()}[Stage 3/12: Copy Input]")
+        self.logger.info(f"{self._log_prefix()}  > Copying input DOCX to temporary location...")
+        self.logger.debug(f"{self._log_prefix()}  > Source: {self.input_path}")
+        self.logger.debug(f"{self._log_prefix()}  > Destination: {self.temp_docx_path}")
+        
+        # Verify source file exists and is accessible
+        if not os.path.exists(self.input_path):
+            self.logger.error(f"{self._log_prefix()}  > ❌ Source file does not exist: {self.input_path}")
+            return False
+        
+        if not os.access(self.input_path, os.R_OK):
+            self.logger.error(f"{self._log_prefix()}  > ❌ Source file is not readable: {self.input_path}")
+            return False
+            
+        try:
+            success = self.file_manager.copy_file(self.input_path, self.temp_docx_path)
+            if not success:
+                self.logger.error(f"{self._log_prefix()}  > ❌ File copy operation failed (no exception thrown)")
+                return False
+            
+            # Verify the copy was successful
+            if not os.path.exists(self.temp_docx_path):
+                self.logger.error(f"{self._log_prefix()}  > ❌ Temp file was not created: {self.temp_docx_path}")
+                return False
+            
+            # Verify the copied file is accessible
+            if not os.access(self.temp_docx_path, os.R_OK):
+                self.logger.error(f"{self._log_prefix()}  > ❌ Temp file is not readable: {self.temp_docx_path}")
+                return False
+                
+            file_size = os.path.getsize(self.temp_docx_path)
+            self.logger.info(f"{self._log_prefix()}  > Input DOCX copied successfully ({file_size} bytes).")
+            return True
+        except Exception as e:
+            self.logger.error(f"{self._log_prefix()}  > ❌ Failed to copy input DOCX: {e}")
+            return False
+
     def _find_placeholders(self) -> bool:
-        """[Stage 3/11: Find Placeholders] Scan document for placeholders."""
-        self.logger.info(f"{self._log_prefix()}[Stage 3/11: Find Placeholders]")
+        """[Stage 4/12: Find Placeholders] Scan document for placeholders."""
+        self.logger.info(f"{self._log_prefix()}[Stage 4/12: Find Placeholders]")
         self.logger.info(f"{self._log_prefix()}  > Scanning document for placeholders...")
-        self.placeholders = self.placeholder_parser.find_all_placeholders(self.input_path)
-        if self.placeholders['total'] == 0:
-            self.logger.info(f"{self._log_prefix()}  > No placeholders found.")
-        else:
-            self.logger.info(f"{self._log_prefix()}  > Found {self.placeholders['total']} placeholders.")
-        return True
+        
+        # Double-check that the temp file exists before trying to parse it
+        if not os.path.exists(self.temp_docx_path):
+            self.logger.error(f"{self._log_prefix()}  > ❌ Temp DOCX file does not exist: {self.temp_docx_path}")
+            self.logger.error(f"{self._log_prefix()}  > This suggests the copy operation in Stage 3 failed silently.")
+            return False
+        
+        try:
+            self.placeholders = self.placeholder_parser.find_all_placeholders(self.temp_docx_path)
+            if self.placeholders['total'] == 0:
+                self.logger.info(f"{self._log_prefix()}  > No placeholders found.")
+            else:
+                self.logger.info(f"{self._log_prefix()}  > Found {self.placeholders['total']} placeholders.")
+            return True
+        except Exception as e:
+            self.logger.error(f"{self._log_prefix()}  > ❌ Failed to parse placeholders from temp DOCX: {e}")
+            self.logger.error(f"{self._log_prefix()}  > Temp file path: {self.temp_docx_path}")
+            self.logger.error(f"{self._log_prefix()}  > File exists: {os.path.exists(self.temp_docx_path)}")
+            if os.path.exists(self.temp_docx_path):
+                self.logger.error(f"{self._log_prefix()}  > File size: {os.path.getsize(self.temp_docx_path)} bytes")
+            return False
 
     def _resolve_docx_inserts(self, processed_files: Set[str]) -> bool:
-        """[Stage 4/11: Recursive DOCX Resolution] Recursively compile DOCX inserts to PDF."""
-        self.logger.info(f"{self._log_prefix()}[Stage 4/11: Recursive DOCX Resolution]")
+        """[Stage 5/12: Recursive DOCX Resolution] Recursively compile DOCX inserts to PDF."""
+        self.logger.info(f"{self._log_prefix()}[Stage 5/12: Recursive DOCX Resolution]")
         
         placeholder_list = self.placeholders.get('table', []) + self.placeholders.get('paragraph', [])
         docx_inserts = [p for p in placeholder_list if p.get('is_recursive_docx')]
@@ -223,8 +278,8 @@ class ReportCompiler:
         return True
 
     def _validate_placeholders(self) -> bool:
-        """[Stage 5/11: Validate Placeholders] Validate placeholder paths and parameters."""
-        self.logger.info(f"{self._log_prefix()}[Stage 5/11: Validate Placeholders]")
+        """[Stage 6/12: Validate Placeholders] Validate placeholder paths and parameters."""
+        self.logger.info(f"{self._log_prefix()}[Stage 6/12: Validate Placeholders]")
         
         if self.placeholders['total'] == 0:
             self.logger.info(f"{self._log_prefix()}  > No placeholders to validate.")
@@ -246,30 +301,37 @@ class ReportCompiler:
         return True
 
     def _modify_docx(self) -> bool:
-        """[Stage 6/11: DOCX Modification] Create a modified DOCX with placeholders handled."""
-        self.logger.info(f"{self._log_prefix()}[Stage 6/11: DOCX Modification]")
+        """[Stage 7/12: DOCX Modification] Modify the temp DOCX with placeholders handled."""
+        self.logger.info(f"{self._log_prefix()}[Stage 7/12: DOCX Modification]")
         if self.placeholders['total'] == 0:
-            self.logger.info(f"{self._log_prefix()}  > No placeholders to process. Copying original document for conversion.")
-            self.file_manager.copy_file(self.input_path, self.temp_docx_path)
+            self.logger.info(f"{self._log_prefix()}  > No placeholders to process. Using temp document as-is for conversion.")
             self.table_metadata = {}
             return True
 
         self.logger.info(f"{self._log_prefix()}  > Inserting markers into DOCX for {self.placeholders['total']} placeholders...")
+        # Create a new temp file for the modified version to avoid overwriting the original temp copy
+        modified_temp_path = self.file_manager.generate_temp_path(self.input_path, "modified_with_markers")
         table_metadata = self.docx_processor.create_modified_docx(
-            self.input_path, self.placeholders, self.temp_docx_path
+            self.temp_docx_path, self.placeholders, modified_temp_path
         )
 
         if table_metadata is None:
             self.logger.error(f"{self._log_prefix()}  > ❌ Failed to create modified DOCX.")
             return False
 
+        # Replace the temp file with the modified version
+        move_success = self.file_manager.move_file(modified_temp_path, self.temp_docx_path)
+        if not move_success:
+            self.logger.error(f"{self._log_prefix()}  > ❌ Failed to replace temp file with modified version.")
+            return False
+            
         self.table_metadata = table_metadata
         self.logger.info(f"{self._log_prefix()}  > Modified DOCX created successfully.")
         return True
 
     def _convert_to_pdf(self) -> bool:
-        """[Stage 7/11: PDF Conversion] Convert the DOCX to a base PDF."""
-        self.logger.info(f"{self._log_prefix()}[Stage 7/11: PDF Conversion]")
+        """[Stage 8/12: PDF Conversion] Convert the DOCX to a base PDF."""
+        self.logger.info(f"{self._log_prefix()}[Stage 8/12: PDF Conversion]")
         use_libreoffice = False
         if self.word_converter.is_available():
             self.logger.info(f"{self._log_prefix()}  > Attempting conversion with MS Word...")
@@ -309,8 +371,8 @@ class ReportCompiler:
         return True
 
     def _analyze_base_pdf(self) -> bool:
-        """[Stage 8/11: PDF Analysis] Find markers and content in the base PDF."""
-        self.logger.info(f"{self._log_prefix()}[Stage 8/11: PDF Analysis]")
+        """[Stage 9/12: PDF Analysis] Find markers and content in the base PDF."""
+        self.logger.info(f"{self._log_prefix()}[Stage 9/12: PDF Analysis]")
         if self.placeholders['total'] == 0:
             self.logger.info(f"{self._log_prefix()}  > No placeholders were processed. Skipping analysis.")
             # If there are no placeholders, the temp_pdf is the final document.
@@ -332,8 +394,8 @@ class ReportCompiler:
         return True
 
     def _process_pdf_overlays(self) -> bool:
-        """[Stage 9/11: PDF Overlays] Apply overlays to the base PDF."""
-        self.logger.info(f"{self._log_prefix()}[Stage 9/11: PDF Overlays]")
+        """[Stage 10/12: PDF Overlays] Apply overlays to the base PDF."""
+        self.logger.info(f"{self._log_prefix()}[Stage 10/12: PDF Overlays]")
         
         table_placeholders = self.placeholders.get('table', [])
         if not table_placeholders:
@@ -355,8 +417,8 @@ class ReportCompiler:
         return True
 
     def _process_pdf_merges(self) -> bool:
-        """[Stage 10/11: PDF Merging] Merge inserted PDFs into the main document."""
-        self.logger.info(f"{self._log_prefix()}[Stage 10/11: PDF Merging]")
+        """[Stage 11/12: PDF Merging] Merge inserted PDFs into the main document."""
+        self.logger.info(f"{self._log_prefix()}[Stage 11/12: PDF Merging]")
         
         paragraph_placeholders = self.placeholders.get('paragraph', [])
         if not paragraph_placeholders:
@@ -386,8 +448,8 @@ class ReportCompiler:
         return True
 
     def _finalize_pdf(self) -> bool:
-        """[Stage 11/11: Finalization] Remove markers and save the final PDF."""
-        self.logger.info(f"{self._log_prefix()}[Stage 11/11: Finalization]")
+        """[Stage 12/12: Finalization] Remove markers and save the final PDF."""
+        self.logger.info(f"{self._log_prefix()}[Stage 12/12: Finalization]")
         
         # If no placeholders were processed, the final PDF is already in place.
         if self.placeholders['total'] == 0:
