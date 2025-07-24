@@ -269,6 +269,11 @@ def handle_compilation(args, logger) -> int:
     finally:
         if compiler and hasattr(compiler, 'word_converter'):
             compiler.word_converter.disconnect()
+        # Pause at the end to keep CLI open for user review
+        try:
+            input("\nPress Enter to exit...")
+        except Exception:
+            pass
 
 def parse_page_range(page_spec: str, total_pages: int) -> list:
     """

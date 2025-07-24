@@ -67,3 +67,4 @@ test_*.pdf
 # Log files
 *.log
 
+uv.lock
