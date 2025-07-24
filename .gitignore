@@ -46,6 +46,7 @@ Desktop.ini
 *_temp.pdf
 temp_modified_report_*.docx
 temp_base_*.pdf
+examples/
 
 # Debug output files
 debug_*.pdf
