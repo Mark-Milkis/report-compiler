@@ -59,12 +59,10 @@ class PlaceholderParser:
         
         try:
             for table_idx, table in enumerate(self._doc.tables):
-                rows = len(table.rows)
-                cols = len(table.columns)
                 
                 # Only consider single-cell tables for overlay inserts
-                if rows == 1 and cols == 1:
-                    cell = table.rows[0].cells[0]
+                if len(table._cells) == 1:
+                    cell = table.cell(0, 0)  # Single-cell table has only one cell
                     cell_text = cell.text.strip()
                     
                     # Check if this cell contains an OVERLAY placeholder
