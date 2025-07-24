@@ -42,18 +42,10 @@ Public Sub InsertAppendixPlaceholder(control As IRibbonControl)
     ' Construct the placeholder string.
     placeholderText = "[[INSERT: " & relativePdfPath & "]]"
     
-    ' Insert the placeholder into a new paragraph and wrap it in a content control.
+    ' Insert the placeholder into a new paragraph as plain text (no content control).
     With Selection
         .TypeParagraph
-        Set cc = .Range.ContentControls.Add(wdContentControlText)
-        With cc
-            .Title = "Appendix Placeholder"
-            .Tag = placeholderText
-            .Range.Text = placeholderText
-            .LockContents = True
-        End With
-        .MoveRight Unit:=wdCharacter, Count:=1
-        .TypeParagraph
+        .TypeText Text:=placeholderText
     End With
     
 End Sub
@@ -104,14 +96,8 @@ Public Sub InsertOverlayPlaceholder(control As IRibbonControl)
 
     End With
     
-    ' Insert the placeholder text into the cell and wrap in a content control.
-    Set cc = tbl.Cell(1, 1).Range.ContentControls.Add(wdContentControlText)
-    With cc
-        .Title = "Overlay Placeholder"
-        .Tag = placeholderText
-        .Range.Text = placeholderText
-        .LockContents = True
-    End With
+    ' Insert the placeholder text into the cell as plain text (no content control).
+    tbl.Cell(1, 1).Range.Text = placeholderText
     
 End Sub
 
