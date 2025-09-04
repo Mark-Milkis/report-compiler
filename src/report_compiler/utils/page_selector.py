@@ -42,7 +42,8 @@ class PageSelector:
             start_str, end_str = match
             start = int(start_str)
             
-            if end_str == '':  # Open range (e.g., "9-")
+            # Check if this is truly an open range (has a dash) vs just a single page
+            if end_str == '' and '-' in page_spec:  # Open range (e.g., "9-")
                 open_range_start = start - 1  # Convert to 0-based
                 break
             elif end_str:  # Closed range (e.g., "1-3")

@@ -280,6 +280,9 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     
     ' Execute the command. vbNormalFocus shows the console window so users can see progress.
     On Error Resume Next
+
+    MsgBox "The report compiler has been started. You can monitor its progress in the console window.", vbInformation, "Compiler Started"
+
     Shell cmdString, vbNormalFocus
     If Err.Number <> 0 Then
         MsgBox "Failed to start the compiler. Please check that uvx is installed and in your PATH.", vbCritical, "Execution Error"
@@ -289,7 +292,6 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     On Error GoTo 0
     
     ' Inform the user that the process has started.
-    MsgBox "The report compiler has been started. You can monitor its progress in the console window.", vbInformation, "Compiler Started"
     
 End Sub
 

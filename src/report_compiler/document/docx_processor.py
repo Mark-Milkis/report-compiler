@@ -216,7 +216,39 @@ class DocxProcessor:
                 self.logger.debug("      - Placed primary marker in table %d: %s", table_idx, marker)
 
                 # Replicate rows for multi-page overlays
-                num_pages = placeholder.get('page_count', 1)
+                # Calculate actual number of pages that will be selected based on page specification
+                total_pages_in_source = placeholder.get('page_count', 1)
+                page_spec = placeholder.get('page_spec')
+                
+                self.logger.debug("      - Calculating pages for spec '%s', total source pages: %d", page_spec, total_pages_in_source)
+                
+                if page_spec:
+                    try:
+                        # Import PageSelector to calculate actual selected pages
+                        from ..utils.page_selector import PageSelector
+                        page_selector = PageSelector()
+                        
+                        # Create a mock document with the correct page count to test selection
+                        class MockDocument:
+                            def __init__(self, page_count):
+                                self._page_count = page_count
+                            def __len__(self):
+                                return self._page_count
+                        
+                        mock_doc = MockDocument(total_pages_in_source)
+                        page_selection = page_selector.parse_specification(page_spec)
+                        selected_pages = page_selector.apply_selection(mock_doc, page_selection)
+                        num_pages = len(selected_pages)
+                        
+                        self.logger.debug("      - Page spec '%s' selects %d of %d pages", page_spec, num_pages, total_pages_in_source)
+                    except Exception as e:
+                        self.logger.error("      - Error calculating page selection: %s", e)
+                        num_pages = total_pages_in_source
+                else:
+                    num_pages = total_pages_in_source
+                
+                self.logger.debug("      - Final num_pages: %d", num_pages)
+                
                 if num_pages > 1:
                     self._replicate_table_rows_for_overlay(table, num_pages, table_idx)
             else:
