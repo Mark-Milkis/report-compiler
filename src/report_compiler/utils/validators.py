@@ -86,6 +86,76 @@ class Validators:
         return result
     
     @staticmethod
+    def validate_image_path(image_path: str, base_directory: str) -> Dict[str, any]:
+        """
+        Validate and resolve an image file path.
+        
+        Args:
+            image_path: Relative or absolute path to image
+            base_directory: Base directory for resolving relative paths
+            
+        Returns:
+            Dict with validation results including resolved path and dimensions
+        """
+        result = {
+            'valid': False,
+            'resolved_path': None,
+            'width': 0,
+            'height': 0,
+            'error_message': None,
+            'file_size_mb': 0.0
+        }
+        
+        try:
+            # Normalize path separators for cross-platform compatibility
+            image_path = image_path.replace("\\", os.sep).replace("/", os.sep)
+            # Try to resolve the path
+            if os.path.isabs(image_path):
+                resolved_path = image_path
+            else:
+                resolved_path = os.path.join(base_directory, image_path)
+            
+            resolved_path = os.path.abspath(resolved_path)
+            
+            # Check if file exists
+            if not os.path.exists(resolved_path):
+                result['error_message'] = f"File not found: {resolved_path}"
+                return result
+            
+            # Check if it's a file
+            if not os.path.isfile(resolved_path):
+                result['error_message'] = f"Path is not a file: {resolved_path}"
+                return result
+            
+            # Check file extension
+            if not any(resolved_path.lower().endswith(ext) for ext in Config.SUPPORTED_IMAGE_EXTENSIONS):
+                result['error_message'] = f"Not a supported image file: {resolved_path}"
+                return result
+            
+            # Try to get image dimensions using PIL
+            try:
+                from PIL import Image
+                with Image.open(resolved_path) as img:
+                    result['width'], result['height'] = img.size
+            except Exception as e:
+                result['error_message'] = f"Invalid image file: {e}"
+                return result
+            
+            # Get file size
+            try:
+                result['file_size_mb'] = os.path.getsize(resolved_path) / (1024 * 1024)
+            except Exception:
+                result['file_size_mb'] = 0.0
+            
+            result['valid'] = True
+            result['resolved_path'] = resolved_path
+            
+        except Exception as e:
+            result['error_message'] = f"Path validation error: {e}"
+        
+        return result
+    
+    @staticmethod
     def validate_docx_path(docx_path: str) -> Dict[str, any]:
         """
         Validate a DOCX file path.
@@ -224,16 +294,35 @@ class Validators:
                 result['valid'] = False
                 continue
 
-            path_validation = self.validate_pdf_path(file_path_raw, base_directory)
-            if not path_validation['valid']:
-                msg = f"Invalid PDF in placeholder '{file_path_raw}': {path_validation['error_message']}"
-                result['errors'].append(msg)
-                result['valid'] = False
-                continue
+            # Determine placeholder type for validation
+            placeholder_subtype = placeholder.get('subtype', 'overlay')  # Default to overlay for backward compatibility
             
-            # Mutate the placeholder dictionary to include resolved path and page count
-            placeholder['resolved_path'] = path_validation['resolved_path']
-            placeholder['page_count'] = path_validation['page_count']
+            if placeholder_subtype == 'image':
+                # Validate as image file
+                path_validation = self.validate_image_path(file_path_raw, base_directory)
+                if not path_validation['valid']:
+                    msg = f"Invalid image in placeholder '{file_path_raw}': {path_validation['error_message']}"
+                    result['errors'].append(msg)
+                    result['valid'] = False
+                    continue
+                
+                # Mutate the placeholder dictionary to include resolved path and image info
+                placeholder['resolved_path'] = path_validation['resolved_path']
+                placeholder['image_width'] = path_validation['width']
+                placeholder['image_height'] = path_validation['height']
+                placeholder['file_size_mb'] = path_validation['file_size_mb']
+            else:
+                # Validate as PDF file (overlay or other types)
+                path_validation = self.validate_pdf_path(file_path_raw, base_directory)
+                if not path_validation['valid']:
+                    msg = f"Invalid PDF in placeholder '{file_path_raw}': {path_validation['error_message']}"
+                    result['errors'].append(msg)
+                    result['valid'] = False
+                    continue
+                
+                # Mutate the placeholder dictionary to include resolved path and page count
+                placeholder['resolved_path'] = path_validation['resolved_path']
+                placeholder['page_count'] = path_validation['page_count']
 
         if not result['valid']:
             return result # Stop if there are path errors
