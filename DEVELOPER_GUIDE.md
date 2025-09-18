@@ -72,6 +72,12 @@ placeholders = parser.find_all_placeholders(docx_path)
 - Identifies single-cell tables containing `[[OVERLAY:...]]` patterns
 - Extracts table metadata (dimensions, position) for precise overlay calculation
 
+**Table Placeholders (IMAGE):**
+- Searches through `document.tables`
+- Identifies single-cell tables containing `[[IMAGE:...]]` patterns
+- Directly inserts images into the Word document (no PDF processing needed)
+- Supports auto-sizing and manual width/height parameters
+
 **Paragraph Placeholders (INSERT):**
 - Searches through `document.paragraphs`
 - Identifies standalone paragraphs containing `[[INSERT:...]]` patterns
