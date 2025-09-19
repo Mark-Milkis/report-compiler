@@ -217,10 +217,12 @@ class DocxProcessor:
 
     def _process_image_placeholder(self, table, placeholder: Dict, doc: Document):
         """Process an IMAGE placeholder by inserting the image directly into the table cell."""
-        file_path = placeholder['file_path']
+        # Use the resolved path that was computed during validation
+        # This ensures relative paths are resolved relative to the document location
+        file_path = placeholder.get('resolved_path') or placeholder.get('file_path')
         
         try:
-            # Validate image file exists
+            # Validate image file exists (should already be validated, but double-check)
             if not os.path.exists(file_path):
                 self.logger.error("      - Image file not found: %s", file_path)
                 return
