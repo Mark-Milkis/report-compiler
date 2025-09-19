@@ -10,6 +10,14 @@ The Word integration provides:
 - **One-click compilation** directly from Word
 - **PDF to SVG conversion** for direct image insertion
 
+### Platform Support
+
+- **Windows**: Full support with Microsoft Word
+- **macOS**: Full support with Microsoft Word
+- **Linux**: Word integration not available (Word not supported on Linux)
+
+The `uvx report-compiler word-integration` commands will automatically detect your platform and provide appropriate error messages on unsupported platforms.
+
 ## Installation Steps
 
 ### 1. Install Report Compiler
@@ -22,6 +30,20 @@ report-compiler --version
 ```
 
 ### 2. Install Word Template
+
+**Option 1: Using uvx (Recommended)**
+
+```bash
+# Install Word integration template automatically
+uvx report-compiler word-integration install
+```
+
+This will:
+- Automatically detect your Word startup folder
+- Copy the template file to the correct location
+- Provide instructions for next steps
+
+**Option 2: Manual Installation**
 
 1. **Download the template file**: `ReportCompilerTemplate.dotm` from the `word_integration/` folder
 
@@ -38,12 +60,61 @@ report-compiler --version
 
 ### 3. Verify Installation
 
-After restarting Word, you should see a new "Report Compiler" group in the ribbon with these buttons:
+After installation, restart Microsoft Word and look for the "Report Compiler" tab in the ribbon. If you don't see it:
+
+1. **Check the installation status**:
+   ```bash
+   uvx report-compiler word-integration status
+   ```
+
+2. **Verify the template is in the correct location**
+3. **Make sure macros are enabled** (see Troubleshooting section)
+
+You should see these buttons in the ribbon:
 
 - **Insert Appendix** - Adds INSERT placeholders for full-page PDF content
 - **Insert Overlay** - Adds OVERLAY placeholders in tables for positioned content  
 - **PDF to SVG** - Converts PDF pages to SVG images for direct insertion
 - **Compile Report** - Runs the report compiler directly from Word
+
+## Managing Word Integration
+
+### Check Installation Status
+
+```bash
+# Get detailed status of Word integration
+uvx report-compiler word-integration status
+```
+
+This will show:
+- Platform support status
+- Word startup folder location
+- Template installation status
+- Source template availability
+
+### Update Word Integration
+
+```bash
+# Update to latest Word integration template
+uvx report-compiler word-integration update
+```
+
+Use this when:
+- A new version of Report Compiler is released
+- You want to ensure you have the latest template features
+- The integration stops working after an update
+
+### Remove Word Integration
+
+```bash
+# Remove Word integration template
+uvx report-compiler word-integration remove
+```
+
+This will:
+- Remove the template from your Word startup folder
+- Clean up the integration completely
+- Require Word restart to complete removal
 
 ## Using the Word Integration
 

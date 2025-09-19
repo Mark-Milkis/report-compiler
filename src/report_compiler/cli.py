@@ -23,6 +23,7 @@ Examples:
   report-compiler report.docx final_report.pdf
   report-compiler report.docx output.pdf --keep-temp
   report-compiler svg-import input.pdf output.svg --page 3
+  report-compiler word-integration install
 
 Placeholder Types:
   [[OVERLAY: path/file.pdf]]        - Table-based overlay (precise positioning)
@@ -33,12 +34,19 @@ Placeholder Types:
   [[INSERT: path/file.pdf:1-3,7]]   - Insert specific pages only
   [[INSERT: path/file.docx]]        - Recursively compile and insert a DOCX file
 
+Word Integration Commands:
+  word-integration install          - Install Word template for ribbon buttons
+  word-integration remove           - Remove Word template  
+  word-integration update           - Update Word template to latest version
+  word-integration status           - Show Word integration status
+
 Features:
   • Recursive compilation of DOCX files
   • Content-aware cropping with border preservation
   • Multi-page overlay support with automatic table replication
   • High-quality PDF to SVG conversion for single or multiple pages
   • Comprehensive validation and error reporting
+  • Automated Word integration management via uvx
     """
 )
 
