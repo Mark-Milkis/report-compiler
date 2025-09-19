@@ -15,6 +15,7 @@ class PlaceholderParser:
     def __init__(self):
         self.overlay_regex = Config.OVERLAY_REGEX
         self.insert_regex = Config.INSERT_REGEX
+        self.image_regex = Config.IMAGE_REGEX
         self.logger = get_module_logger(__name__)
         
         # Cache for document parsing
@@ -66,10 +67,12 @@ class PlaceholderParser:
                     cell_text = cell.text.strip()
                     
                     # Check if this cell contains an OVERLAY placeholder
-                    match = self.overlay_regex.search(cell_text)
-                    if match:
-                        path_raw = match.group(1).strip()
-                        params_string = match.group(2)
+                    overlay_match = self.overlay_regex.search(cell_text)
+                    image_match = self.image_regex.search(cell_text)
+                    
+                    if overlay_match:
+                        path_raw = overlay_match.group(1).strip()
+                        params_string = overlay_match.group(2)
                         
                         # Parse parameters
                         params = self._parse_overlay_parameters(params_string)
@@ -81,6 +84,7 @@ class PlaceholderParser:
                         
                         table_info = {
                             'type': 'table',
+                            'subtype': 'overlay',
                             'file_path': path_raw,
                             'page_spec': params['page'],
                             'crop_enabled': params['crop'],
@@ -91,19 +95,48 @@ class PlaceholderParser:
                         }
                         
                         placeholders.append(table_info)
+                    
+                    elif image_match:
+                        path_raw = image_match.group(1).strip()
+                        params_string = image_match.group(2)
+                        
+                        # Parse parameters (similar to overlay but no page spec)
+                        params = self._parse_image_parameters(params_string)
+                        
+                        self.logger.info("Found table (image) placeholder for: %s", path_raw)
+                        self.logger.debug("      • Width: %s", params.get('width', 'auto'))
+                        self.logger.debug("      • Height: %s", params.get('height', 'auto'))
+                        self.logger.debug("      • Table index: %d", table_idx)
+                        
+                        table_info = {
+                            'type': 'table',
+                            'subtype': 'image',
+                            'file_path': path_raw,
+                            'width': params.get('width'),
+                            'height': params.get('height'),
+                            'table_index': table_idx,
+                            'table_text': cell_text,
+                            'source': f'table_{table_idx}',
+                            'is_recursive_docx': False, # Images cannot be recursive
+                        }
+                        
+                        placeholders.append(table_info)
                 
                 else:                    # Multi-cell tables: scan but don't classify as overlay
                     has_insert = False
                     for row in table.rows:
                         for cell in row.cells:
                             if (self.overlay_regex.search(cell.text) or 
-                                self.insert_regex.search(cell.text)):
+                                self.insert_regex.search(cell.text) or
+                                self.image_regex.search(cell.text)):
                                 has_insert = True
                                 break
                         if has_insert:
                             break
                     
                     if has_insert:
+                        rows = len(table.rows)
+                        cols = len(table.columns)
                         self.logger.warning("Multi-cell table #%d (%dx%d) contains a placeholder but is skipped (not a valid overlay type).", table_idx, rows, cols)
         
         except Exception as e:
@@ -196,5 +229,36 @@ class PlaceholderParser:
                 # Assume it's a page specification if no key
                 if param and not result['page']:
                     result['page'] = param
+        
+        return result
+
+    def _parse_image_parameters(self, params_string: Optional[str]) -> Dict[str, Any]:
+        """
+        Parse image parameters from the placeholder text.
+        
+        Args:
+            params_string: Parameter string after the path (can be None)
+            
+        Returns:
+            Dict with parsed parameters (width, height)
+        """
+        result = {}
+        
+        if not params_string:
+            return result
+        
+        # Split parameters by comma
+        params = [p.strip() for p in params_string.split(',')]
+        
+        for param in params:
+            if '=' in param:
+                key, value = param.split('=', 1)
+                key = key.strip().lower()
+                value = value.strip()
+                
+                if key == 'width':
+                    result['width'] = value
+                elif key == 'height':
+                    result['height'] = value
         
         return result

@@ -26,6 +26,8 @@ Examples:
 Placeholder Types:
   [[OVERLAY: path/file.pdf]]        - Table-based overlay (precise positioning)
   [[OVERLAY: path/file.pdf, crop=false]]  - Overlay without content cropping
+  [[IMAGE: path/image.png]]         - Direct image insertion into tables
+  [[IMAGE: image.jpg, width=2in]]   - Image with size parameters
   [[INSERT: path/file.pdf]]         - Paragraph-based merge (full document)
   [[INSERT: path/file.pdf:1-3,7]]   - Insert specific pages only
   [[INSERT: path/file.docx]]        - Recursively compile and insert a DOCX file

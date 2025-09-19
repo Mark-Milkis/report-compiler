@@ -26,6 +26,11 @@ Perfect for engineering reports, technical documentation, and any workflow where
    ┌─────────────────────────────────────┐
    │ [[OVERLAY: drawings/sketch.pdf]]    │
    └─────────────────────────────────────┘
+   
+   Here's the company logo:
+   ┌─────────────────────────────────────┐
+   │ [[IMAGE: assets/logo.png]]          │
+   └─────────────────────────────────────┘
    ```
 
 2. **Run the compiler**:
@@ -158,6 +163,25 @@ Use `OVERLAY` placeholders to position PDF content precisely within tables. Plac
   - `crop=true` (default): Auto-crop to remove whitespace
   - `crop=false`: Use full page dimensions
 
+#### 3. IMAGE Placeholders (Direct Image Insertion)
+
+Use `IMAGE` placeholders to insert image files directly into Word documents. Place these inside single-cell tables:
+
+```text
+[[IMAGE: photos/diagram.png]]
+[[IMAGE: charts/graph.jpg, width=3in]]
+[[IMAGE: icons/logo.png, width=2in, height=1in]]
+```
+
+**Supported formats:** PNG, JPG, JPEG, GIF, BMP, TIFF, WEBP
+
+**Parameters:**
+
+- `width=` - Set image width (e.g., `width=2in`, `width=100px`)
+- `height=` - Set image height (e.g., `height=1.5in`, `height=200px`)
+- If no dimensions specified: Auto-fits to table size while maintaining aspect ratio
+- If only width or height specified: Maintains aspect ratio
+
 #### Path Resolution
 
 All paths are resolved relative to your Word document's location:
@@ -166,6 +190,7 @@ All paths are resolved relative to your Word document's location:
 # If your Word document is in C:\Reports\
 [[INSERT: appendices/data.pdf]]        → C:\Reports\appendices\data.pdf
 [[OVERLAY: ..\shared\drawing.pdf]]     → C:\shared\drawing.pdf
+[[IMAGE: images/chart.png]]            → C:\Reports\images\chart.png
 [[INSERT: C:\absolute\path\file.pdf]]  → C:\absolute\path\file.pdf
 ```
 
