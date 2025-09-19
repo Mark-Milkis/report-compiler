@@ -8,9 +8,14 @@ Option Explicit
 ' from within Microsoft Word.
 '
 ' REQUIRES:
-' To use the GetRelativePath function, you must enable the 'Microsoft Scripting Runtime'
-' library. In the VBA Editor, go to Tools -> References, and check the box for
-' "Microsoft Scripting Runtime".
+' This module depends on the LibFileTools module for OneDrive/SharePoint path handling.
+' Make sure LibFileTools.bas is imported into your VBA project.
+'
+' LibFileTools provides robust file path operations that work with:
+' - Local file paths
+' - OneDrive synchronized folders  
+' - SharePoint synchronized folders
+' - UNC network paths
 '==================================================================================================
 
 
@@ -22,6 +27,8 @@ Public Sub InsertAppendixPlaceholder(control As IRibbonControl)
     ' Inserts a paragraph-based placeholder for merging a full PDF appendix.
     
     Dim pdfPath As String
+    Dim localDocPath As String
+    Dim localPdfPath As String
     Dim relativePdfPath As String
     Dim placeholderText As String
     Dim cc As ContentControl
@@ -36,8 +43,12 @@ Public Sub InsertAppendixPlaceholder(control As IRibbonControl)
     pdfPath = GetPdfPath()
     If pdfPath = "" Then Exit Sub ' User cancelled
     
-    ' Convert the absolute path to a relative path.
-    relativePdfPath = GetRelativePath(pdfPath, ActiveDocument.Path)
+    ' Convert OneDrive/SharePoint paths to local paths for both document and selected PDF
+    localDocPath = GetLocalPath(ActiveDocument.Path, , True)
+    localPdfPath = GetLocalPath(pdfPath, , True)
+    
+    ' Calculate relative path using LibFileTools
+    relativePdfPath = GetRelativePath(localPdfPath, localDocPath)
     
     ' Construct the placeholder string.
     placeholderText = "[[INSERT: " & relativePdfPath & "]]"
@@ -54,6 +65,8 @@ Public Sub InsertOverlayPlaceholder(control As IRibbonControl)
     ' Inserts a table-based placeholder for overlaying a PDF page.
     
     Dim pdfPath As String
+    Dim localDocPath As String
+    Dim localPdfPath As String
     Dim relativePdfPath As String
     Dim pageRange As String
     Dim cropText As String
@@ -71,7 +84,12 @@ Public Sub InsertOverlayPlaceholder(control As IRibbonControl)
     pdfPath = GetPdfPath()
     If pdfPath = "" Then Exit Sub ' User cancelled
     
-    relativePdfPath = GetRelativePath(pdfPath, ActiveDocument.Path)
+    ' Convert OneDrive/SharePoint paths to local paths for both document and selected PDF
+    localDocPath = GetLocalPath(ActiveDocument.Path, , True)
+    localPdfPath = GetLocalPath(pdfPath, , True)
+    
+    ' Calculate relative path using LibFileTools
+    relativePdfPath = GetRelativePath(localPdfPath, localDocPath)
     
     ' Prompt for optional parameters.
     pageRange = InputBox("Enter an optional page range (e.g., 1-3,5). Leave blank for all pages.", "Overlay Page Selection")
@@ -105,6 +123,8 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     ' Converts a PDF page to SVG and inserts it as an image.
     
     Dim pdfPath As String
+    Dim localDocPath As String
+    Dim localPdfPath As String
     Dim pageNumber As String
     Dim intPageNumber As Integer
     Dim tempSvgFolder As String
@@ -127,6 +147,10 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     pdfPath = GetPdfPath()
     If pdfPath = "" Then Exit Sub ' User cancelled
     
+    ' Convert OneDrive/SharePoint paths to local paths
+    localDocPath = GetLocalPath(doc.Path, , True)
+    localPdfPath = GetLocalPath(pdfPath, , True)
+    
     ' Get the page range from the user.
     pageNumber = InputBox("Enter page number(s) to convert:" & vbCrLf & vbCrLf & _
                          "Examples:" & vbCrLf & _
@@ -141,8 +165,8 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     pageNumber = Trim(LCase(pageNumber))
     If pageNumber = "" Then pageNumber = "all"
     
-    ' Create temporary folder
-    tempSvgFolder = doc.Path & "\temp-svg"
+    ' Create temporary folder using local document path
+    tempSvgFolder = localDocPath & "\temp-svg"
     Set fso = CreateObject("Scripting.FileSystemObject")
     
     If Not fso.FolderExists(tempSvgFolder) Then
@@ -152,9 +176,9 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     ' Define temporary SVG path (base name)
     tempSvgPath = tempSvgFolder & "\page.svg"
     
-    ' Build the command string for SVG conversion
+    ' Build the command string for SVG conversion using local PDF path
     cmdString = "uvx report-compiler svg-import --page " & pageNumber & " " & _
-                Chr(34) & pdfPath & Chr(34) & " " & Chr(34) & tempSvgPath & Chr(34)
+                Chr(34) & localPdfPath & Chr(34) & " " & Chr(34) & tempSvgPath & Chr(34)
     
     Debug.Print "Executing command: " & cmdString
 
@@ -203,7 +227,7 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     For Each svgFile In svgFiles
         If LCase(Right(svgFile.Name, 4)) = ".svg" Then
             ' Insert each SVG as an image
-            Selection.InlineShapes.AddPicture FileName:=svgFile.Path, LinkToFile:=False, SaveWithDocument:=True
+            Selection.InlineShapes.AddPicture fileName:=svgFile.Path, LinkToFile:=False, SaveWithDocument:=True
             insertedCount = insertedCount + 1
             
             ' Add a line break after each image except the last one
@@ -272,17 +296,14 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     doc.Save
     
     ' Define input and output paths.
-    inputPath = doc.FullName
-    outputPath = Replace(doc.FullName, ".docx", ".pdf")
+    inputPath = GetLocalPath(doc.FullName)
+    outputPath = Replace(inputPath, ".docx", ".pdf")
     
     ' Build the command string for the shell. Paths are wrapped in quotes.
     cmdString = "uvx report-compiler compile " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
     
     ' Execute the command. vbNormalFocus shows the console window so users can see progress.
     On Error Resume Next
-
-    MsgBox "The report compiler has been started. You can monitor its progress in the console window.", vbInformation, "Compiler Started"
-
     Shell cmdString, vbNormalFocus
     If Err.Number <> 0 Then
         MsgBox "Failed to start the compiler. Please check that uvx is installed and in your PATH.", vbCritical, "Execution Error"
@@ -292,6 +313,7 @@ Public Sub RunReportCompiler(control As IRibbonControl)
     On Error GoTo 0
     
     ' Inform the user that the process has started.
+    MsgBox "The report compiler has been started. You can monitor its progress in the console window.", vbInformation, "Compiler Started"
     
 End Sub
 
@@ -306,12 +328,12 @@ Private Function GetPdfPath() As String
     
     With Application.FileDialog(msoFileDialogFilePicker)
         .Title = "Select a PDF File"
-        .AllowMultiSelect = False
+        .allowMultiSelect = False
         
         ' Clear existing filters and add one for PDF files.
-        .Filters.Clear
-        .Filters.Add "PDF Files", "*.pdf"
-        .Filters.Add "Word Files", "*.docx"
+        .filters.Clear
+        .filters.Add "PDF Files", "*.pdf"
+        .filters.Add "Word Files", "*.docx"
         
         ' Show the dialog and check if a file was selected.
         If .Show = True Then
@@ -323,34 +345,4 @@ Private Function GetPdfPath() As String
     
 End Function
 
-Private Function GetRelativePath(ByVal targetPath As String, ByVal basePath As String) As String
-    ' Calculates the relative path from a base folder to a target file.
-    ' Requires a reference to "Microsoft Scripting Runtime".
-    
-    Dim fso As Object
-    Dim relativePath As String
-    
-    On Error GoTo ErrorHandler
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    relativePath = fso.GetFile(targetPath).Path
-    
-    ' Use the built-in (but poorly documented) RelativePath property if available
-    ' This is a fallback for older systems; modern FSO should handle it.
-    If fso.FolderExists(basePath) Then
-        Dim tempFile As Object
-        Set tempFile = fso.GetFile(targetPath)
-        ' A trick to get relative path
-        GetRelativePath = Mid(tempFile.Path, Len(fso.GetAbsolutePathName(basePath)) + 2)
-        ' A more robust method using built-in functionality if available
-        GetRelativePath = fso.GetFolder(basePath).ParentFolder.CreateTextFile("dummy.txt", True).ParentFolder.GetRelativePath(targetPath)
-        fso.DeleteFile fso.GetFolder(basePath).ParentFolder.Path & "\dummy.txt"
-    Else
-        GetRelativePath = targetPath ' Fallback to absolute path
-    End If
-    
-    Exit Function
 
-ErrorHandler:
-    ' If any error occurs (e.g., FSO not available), fall back to the absolute path.
-    GetRelativePath = targetPath
-End Function
