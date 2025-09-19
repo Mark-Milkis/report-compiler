@@ -27,7 +27,7 @@ class Config:
     TEMP_FILE_PREFIX = "~temp_"
     SUPPORTED_PDF_EXTENSIONS = ['.pdf']
     SUPPORTED_DOCX_EXTENSIONS = ['.docx']
-    SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']
+    SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.heif' , '.emf', '.wmf']
     
     # Word automation settings
     WORD_EXPORT_FORMAT = 17  # PDF format in Word

@@ -11,6 +11,7 @@ from PIL import Image
 from ..core.config import Config
 from ..utils.logging_config import get_docx_logger
 from ..utils.conversions import points_to_inches, emu_to_points
+from ..utils import docx_emf_patch  # Ensure EMF support is patched in
 
 
 class DocxProcessor:
