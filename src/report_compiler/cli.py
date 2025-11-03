@@ -13,7 +13,7 @@ from report_compiler.core.config import Config
 from report_compiler.utils.logging_config import setup_logging, get_logger
 from report_compiler.utils.pdf_to_svg import PdfToSvgConverter
 from report_compiler.utils.word_integration_manager import WordIntegrationManager
-from report_compiler import __version__
+from report_compiler._version import __version__
 
 app = typer.Typer(
     help=f"""
@@ -70,15 +70,7 @@ def compile_docx(
     logger.info("=" * 60)
     logger.info(f"Report Compiler v{__version__} - Starting compilation")
     logger.info("=" * 60)
-    class Args:
-        def __init__(self, input_file, output_file, keep_temp, verbose, log_file):
-            self.input_file = input_file
-            self.output_file = output_file
-            self.keep_temp = keep_temp
-            self.verbose = verbose
-            self.log_file = log_file
-    args = Args(input_file, output_file, keep_temp, verbose, log_file)
-    return handle_compilation(args, logger)
+    return handle_compilation(input_file, output_file, keep_temp, logger)
 
 @app.command("svg-import")
 def svg_import(
@@ -95,15 +87,7 @@ def svg_import(
     logger.info("=" * 60)
     logger.info(f"Report Compiler v{__version__} - Starting PDF to SVG conversion")
     logger.info("=" * 60)
-    class Args:
-        def __init__(self, input_file, output_file, page, verbose, log_file):
-            self.input_file = input_file
-            self.output_file = output_file
-            self.page = page
-            self.verbose = verbose
-            self.log_file = log_file
-    args = Args(input_file, output_file, page, verbose, log_file)
-    return handle_svg_import(args, logger)
+    return handle_svg_import(input_file, output_file, page, logger)
 
 # Create a subcommand app for word-integration commands
 word_app = typer.Typer(
@@ -237,32 +221,42 @@ def word_integration_detailed_status(
     
     raise typer.Exit(0 if status['supported'] else 1)
 
+from report_compiler import interactive_menu
+
+@app.command("interactive")
+def interactive_mode():
+    """Start an interactive shell session."""
+    interactive_menu.main()
+
 # Add the word-integration subcommand app to the main app
 app.add_typer(word_app, name="word-integration")
 
 def main():
-    app()
+    if len(sys.argv) == 1:
+        interactive_menu.main()
+    else:
+        app()
 
-def handle_svg_import(args, logger) -> int:
+def handle_svg_import(input_file, output_file, page, logger) -> int:
     """Handle PDF to SVG conversion."""
     logger.info("Mode: PDF to SVG conversion")
     
     # Validate input file
-    input_path = Path(args.input_file)
+    input_path = Path(input_file)
     if not input_path.exists():
-        logger.error(f"Input file not found: {args.input_file}")
+        logger.error(f"Input file not found: {input_file}")
         return 1
     
     if not input_path.suffix.lower() == '.pdf':
-        logger.error(f"Input file must be a PDF document: {args.input_file}")
+        logger.error(f"Input file must be a PDF document: {input_file}")
         return 1
     
     logger.info(f"Input PDF: {input_path.absolute()}")
     
     # Validate output file
-    output_path = Path(args.output_file)
+    output_path = Path(output_file)
     if not output_path.suffix.lower() == '.svg':
-        logger.error(f"Output file must have .svg extension: {args.output_file}")
+        logger.error(f"Output file must have .svg extension: {output_file}")
         return 1
     
     try:
@@ -285,7 +279,7 @@ def handle_svg_import(args, logger) -> int:
     
     # Parse page specification
     try:
-        pages_to_convert = parse_page_range(args.page, validation_result['page_count'])
+        pages_to_convert = parse_page_range(page, validation_result['page_count'])
     except ValueError as e:
         logger.error(f"Invalid page specification: {e}")
         return 1
@@ -357,24 +351,24 @@ def handle_svg_import(args, logger) -> int:
             logger.error("=" * 60)
             return 1
 
-def handle_compilation(args, logger) -> int:
+def handle_compilation(input_file, output_file, keep_temp, logger) -> int:
     """Handle the traditional DOCX compilation."""
     logger.info("Mode: DOCX compilation")
     
     # Validate input file
-    input_path = Path(args.input_file)
+    input_path = Path(input_file)
     if not input_path.exists():
-        logger.error(f"Input file not found: {args.input_file}")
+        logger.error(f"Input file not found: {input_file}")
         return 1
     
     if not input_path.suffix.lower() == '.docx':
-        logger.error(f"Input file must be a DOCX document: {args.input_file}")
+        logger.error(f"Input file must be a DOCX document: {input_file}")
         return 1
     
     logger.info(f"Input DOCX: {input_path.absolute()}")
     
     # Validate output directory
-    output_path = Path(args.output_file)
+    output_path = Path(output_file)
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output PDF: {output_path.absolute()}")
@@ -389,7 +383,7 @@ def handle_compilation(args, logger) -> int:
         compiler = ReportCompiler(
             input_path=str(input_path.absolute()),
             output_path=str(output_path.absolute()),
-            keep_temp=args.keep_temp
+            keep_temp=keep_temp
         )
         
         success = compiler.run()
@@ -415,11 +409,7 @@ def handle_compilation(args, logger) -> int:
     finally:
         if compiler and hasattr(compiler, 'word_converter'):
             compiler.word_converter.disconnect()
-        # Pause at the end to keep CLI open for user review
-        try:
-            input("\nPress Enter to exit...")
-        except Exception:
-            pass
+
 
 def parse_page_range(page_spec: str, total_pages: int) -> list:
     """
@@ -477,3 +467,6 @@ def parse_page_range(page_spec: str, total_pages: int) -> list:
     
     # Remove duplicates and sort
     return sorted(list(set(pages)))
+
+if __name__ == "__main__":
+    main()

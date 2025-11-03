@@ -23,6 +23,7 @@ dependencies = [
     "PyMuPDF>=1.26.3",
     "typer>=0.9.0",
     "pywin32; sys_platform == 'win32'",
+    "questionary>=2.0.1",
 ]
 
 [project.scripts]
