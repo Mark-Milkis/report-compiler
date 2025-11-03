@@ -18,6 +18,13 @@
                   image="insert-overlay"
                   screentip="Insert Overlay Placeholder"
                   supertip="Inserts a 1x1 table placeholder for overlaying a PDF page."/>
+          <button id="btnInsertImage"
+                  label="Insert Image"
+                  size="large"
+                  onAction="InsertImagePlaceholder"
+                  image="insert-image"
+                  screentip="Insert Image Placeholder"
+                  supertip="Inserts a 1x1 table placeholder for embedding an image file."/>
           <button id="btnInsertPdfAsSvg"
                   label="Insert PDF Page (Image)"
                   size="large"

@@ -119,6 +119,49 @@ Public Sub InsertOverlayPlaceholder(control As IRibbonControl)
     
 End Sub
 
+Public Sub InsertImagePlaceholder(control As IRibbonControl)
+    ' Inserts a table-based placeholder for embedding an image file.
+    
+    Dim imagePath As String
+    Dim localDocPath As String
+    Dim localImagePath As String
+    Dim relativeImagePath As String
+    Dim placeholderText As String
+    Dim tbl As Table
+    
+    ' Ensure the document is saved before creating a relative path.
+    If ActiveDocument.Path = "" Then
+        MsgBox "Please save the document first to create a relative path for the image.", vbExclamation, "Save Document"
+        Exit Sub
+    End If
+
+    ' Get the path to the image file from the user.
+    imagePath = GetImagePath()
+    If imagePath = "" Then Exit Sub ' User cancelled
+    
+    ' Convert OneDrive/SharePoint paths to local paths for both document and selected image
+    localDocPath = GetLocalPath(ActiveDocument.Path, , True)
+    localImagePath = GetLocalPath(imagePath, , True)
+    
+    ' Calculate relative path using LibFileTools
+    relativeImagePath = GetRelativePath(localImagePath, localDocPath)
+    
+    ' Construct the placeholder string.
+    placeholderText = "[[IMAGE: " & relativeImagePath & "]]"
+    
+    ' Insert a 1x1 table at the current selection.
+    Set tbl = ActiveDocument.Tables.Add(Range:=Selection.Range, NumRows:=1, NumColumns:=1)
+    
+    ' Style the table to make it visible as a placeholder.
+    With tbl.Borders
+        .Enable = False
+    End With
+    
+    ' Insert the placeholder text into the cell as plain text (no content control).
+    tbl.Cell(1, 1).Range.Text = placeholderText
+    
+End Sub
+
 Public Sub InsertPdfAsSvg(control As IRibbonControl)
     ' Converts a PDF page to SVG and inserts it as an image.
     
@@ -340,6 +383,35 @@ Private Function GetPdfPath() As String
             GetPdfPath = .SelectedItems(1)
         Else
             GetPdfPath = "" ' User cancelled
+        End If
+    End With
+    
+End Function
+
+Private Function GetImagePath() As String
+    ' Opens a file picker dialog for the user to select an image file.
+    ' Returns the full path of the selected file, or an empty string if cancelled.
+    
+    With Application.FileDialog(msoFileDialogFilePicker)
+        .Title = "Select an Image File"
+        .allowMultiSelect = False
+        
+        ' Clear existing filters and add common image formats.
+        .filters.Clear
+        .filters.Add "All Image Files", "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tiff;*.tif;*.svg;*.emf;*.wmf"
+        .filters.Add "PNG Files", "*.png"
+        .filters.Add "JPEG Files", "*.jpg;*.jpeg"
+        .filters.Add "GIF Files", "*.gif"
+        .filters.Add "BMP Files", "*.bmp"
+        .filters.Add "TIFF Files", "*.tiff;*.tif"
+        .filters.Add "SVG Files", "*.svg"
+        .filters.Add "EMF/WMF Files", "*.emf;*.wmf"
+        
+        ' Show the dialog and check if a file was selected.
+        If .Show = True Then
+            GetImagePath = .SelectedItems(1)
+        Else
+            GetImagePath = "" ' User cancelled
         End If
     End With
     
