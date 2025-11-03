@@ -12,6 +12,7 @@ from report_compiler.core.compiler import ReportCompiler
 from report_compiler.core.config import Config
 from report_compiler.utils.logging_config import setup_logging, get_logger
 from report_compiler.utils.pdf_to_svg import PdfToSvgConverter
+from report_compiler.utils.word_integration_manager import WordIntegrationManager
 from report_compiler import __version__
 
 app = typer.Typer(
@@ -22,6 +23,7 @@ Examples:
   report-compiler report.docx final_report.pdf
   report-compiler report.docx output.pdf --keep-temp
   report-compiler svg-import input.pdf output.svg --page 3
+  report-compiler word-integration install
 
 Placeholder Types:
   [[OVERLAY: path/file.pdf]]        - Table-based overlay (precise positioning)
@@ -32,12 +34,19 @@ Placeholder Types:
   [[INSERT: path/file.pdf:1-3,7]]   - Insert specific pages only
   [[INSERT: path/file.docx]]        - Recursively compile and insert a DOCX file
 
+Word Integration Commands:
+  word-integration install          - Install Word template for ribbon buttons
+  word-integration remove           - Remove Word template  
+  word-integration update           - Update Word template to latest version
+  word-integration status           - Show Word integration status
+
 Features:
   • Recursive compilation of DOCX files
   • Content-aware cropping with border preservation
   • Multi-page overlay support with automatic table replication
   • High-quality PDF to SVG conversion for single or multiple pages
   • Comprehensive validation and error reporting
+  • Automated Word integration management via uvx
     """
 )
 
@@ -95,6 +104,141 @@ def svg_import(
             self.log_file = log_file
     args = Args(input_file, output_file, page, verbose, log_file)
     return handle_svg_import(args, logger)
+
+# Create a subcommand app for word-integration commands
+word_app = typer.Typer(
+    help="Manage Word integration template installation and updates",
+    name="word-integration"
+)
+
+@word_app.command("install")
+def install_word_template(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Install Word integration template to startup folder."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    
+    logger.info("=" * 60)
+    logger.info("Installing Word Integration Template")
+    logger.info("=" * 60)
+    
+    manager = WordIntegrationManager()
+    success, message = manager.install_template()
+    
+    if success:
+        logger.info(f"✅ {message}")
+        logger.info("")
+        logger.info("Next steps:")
+        logger.info("1. Restart Microsoft Word")
+        logger.info("2. Look for 'Report Compiler' ribbon buttons")
+        logger.info("3. Use the buttons to insert placeholders and compile reports")
+        raise typer.Exit(0)
+    else:
+        logger.error(f"❌ {message}")
+        raise typer.Exit(1)
+
+@word_app.command("remove")
+def remove_word_template(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Remove Word integration template from startup folder."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    
+    logger.info("=" * 60)
+    logger.info("Removing Word Integration Template")
+    logger.info("=" * 60)
+    
+    manager = WordIntegrationManager()
+    success, message = manager.remove_template()
+    
+    if success:
+        logger.info(f"✅ {message}")
+        logger.info("")
+        logger.info("The Word integration has been removed.")
+        logger.info("Restart Microsoft Word to complete the removal.")
+        raise typer.Exit(0)
+    else:
+        logger.error(f"❌ {message}")
+        raise typer.Exit(1)
+
+@word_app.command("update")
+def update_word_template(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Update Word integration template to latest version."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    
+    logger.info("=" * 60)
+    logger.info("Updating Word Integration Template")
+    logger.info("=" * 60)
+    
+    manager = WordIntegrationManager()
+    success, message = manager.update_template()
+    
+    if success:
+        logger.info(f"✅ {message}")
+        logger.info("")
+        logger.info("The Word integration has been updated.")
+        logger.info("Restart Microsoft Word to use the updated template.")
+        raise typer.Exit(0)
+    else:
+        logger.error(f"❌ {message}")
+        raise typer.Exit(1)
+
+@word_app.command("status")
+def word_integration_detailed_status(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Show detailed Word integration status."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    
+    manager = WordIntegrationManager()
+    status = manager.get_status()
+    
+    logger.info("=" * 60)
+    logger.info("Word Integration Detailed Status")
+    logger.info("=" * 60)
+    logger.info(f"Platform: {status['platform']}")
+    logger.info(f"Platform Supported: {'Yes' if status['supported'] else 'No'}")
+    
+    if status['supported']:
+        logger.info(f"Word Startup Folder: {status['startup_folder']}")
+        logger.info(f"Startup Folder Exists: {'Yes' if status['startup_folder'] and Path(status['startup_folder']).exists() else 'No'}")
+        logger.info(f"Template Installed: {'Yes' if status['template_installed'] else 'No'}")
+        if status['template_installed']:
+            logger.info(f"Installed Template Path: {status['template_path']}")
+    else:
+        logger.info("Word integration is not supported on this platform.")
+        logger.info("Supported platforms: Windows, macOS")
+    
+    logger.info(f"Source Template Available: {'Yes' if status['source_template_exists'] else 'No'}")
+    logger.info(f"Source Template Path: {status['source_template_path']}")
+    
+    if status['supported'] and not status['template_installed']:
+        logger.info("")
+        logger.info("💡 To install Word integration, run:")
+        logger.info("   uvx report-compiler word-integration install")
+    elif status['supported'] and status['template_installed']:
+        logger.info("")
+        logger.info("💡 To update Word integration, run:")
+        logger.info("   uvx report-compiler word-integration update")
+        logger.info("💡 To remove Word integration, run:")
+        logger.info("   uvx report-compiler word-integration remove")
+    
+    logger.info("=" * 60)
+    
+    raise typer.Exit(0 if status['supported'] else 1)
+
+# Add the word-integration subcommand app to the main app
+app.add_typer(word_app, name="word-integration")
 
 def main():
     app()

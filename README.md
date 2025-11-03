@@ -75,6 +75,24 @@ pip install -e .
 
 For enhanced productivity, install the Word add-in that provides buttons to insert placeholders and compile reports:
 
+**Option 1: Using uvx (Recommended)**
+
+```bash
+# Install Word integration template
+uvx report-compiler word-integration install
+
+# Check installation status
+uvx report-compiler word-integration status
+
+# Update to latest version
+uvx report-compiler word-integration update
+
+# Remove integration
+uvx report-compiler word-integration remove
+```
+
+**Option 2: Manual Installation**
+
 1. **Copy the template file** to your Word templates folder:
 
    ```bash
