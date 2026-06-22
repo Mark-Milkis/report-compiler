@@ -3,15 +3,14 @@ DOCX document processing and modification utilities.
 """
 
 import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 from docx import Document
-from docx.oxml import OxmlElement
 from docx.shared import Inches
 from PIL import Image
 from ..core.config import Config
 from ..utils.logging_config import get_docx_logger
 from ..utils.conversions import points_to_inches, emu_to_points
-from ..utils import docx_emf_patch  # Ensure EMF support is patched in
+from ..utils import docx_emf_patch  # noqa: F401  (side-effect import: patches EMF support into python-docx)
 
 
 class DocxProcessor:
@@ -80,7 +79,6 @@ class DocxProcessor:
         try:
             first_row = table.rows[0]
             row_height = first_row.height
-            first_cell = first_row.cells[0]
             # In python-docx, cell width is not a direct property. It's inherited from the table's column definition.
             # We assume all columns in our 1x1 table are the same, so we don't need to set width explicitly on the new cell.
 

@@ -7,6 +7,23 @@ import sys
 from typing import Optional
 
 
+def _make_stream_unicode_safe(stream):
+    """Best-effort: ensure a text stream won't crash on non-encodable characters.
+
+    Log messages contain emoji and box-drawing glyphs (✓, ⚠️, ─). When stdout
+    uses a legacy code page (e.g. cp1252, which is what Windows hands a
+    redirected/piped stdout), writing those raises UnicodeEncodeError inside the
+    logging handler. Reconfiguring to UTF-8 with errors='replace' makes such
+    characters degrade gracefully instead of throwing. No-op if the stream does
+    not support reconfiguration.
+    """
+    try:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass
+    return stream
+
+
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with color support for console output."""
 
@@ -62,8 +79,9 @@ class ReportCompilerLogger:
             '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s() - %(message)s'
         )
 
-        # Console handler with color
-        console_handler = logging.StreamHandler(sys.stdout)
+        # Console handler with color (UTF-8 safe so emoji/glyphs never crash
+        # logging on legacy-code-page consoles).
+        console_handler = logging.StreamHandler(_make_stream_unicode_safe(sys.stdout))
         console_handler.setLevel(getattr(logging, level.upper()))
         console_handler.setFormatter(console_formatter)
         self._logger.addHandler(console_handler)

@@ -177,7 +177,7 @@ class WordIntegrationManager:
             
             # Check if template is currently installed
             if not dest_path.exists():
-                return False, f"Template is not currently installed. Use 'install' command first."
+                return False, "Template is not currently installed. Use 'install' command first."
             
             # Create backup of existing template
             backup_path = dest_path.with_suffix('.dotm.backup')

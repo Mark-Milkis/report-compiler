@@ -6,11 +6,9 @@ import fitz  # PyMuPDF
 import shutil
 import os
 from typing import Dict, List, Any, Optional
-from ..core.config import Config
 from ..utils.page_selector import PageSelector
 from ..utils.logging_config import get_merge_logger
 from .content_analyzer import ContentAnalyzer
-from .marker_remover import MarkerRemover
 
 
 class MergeProcessor:
@@ -19,8 +17,11 @@ class MergeProcessor:
     def __init__(self):
         self.page_selector = PageSelector()
         self.content_analyzer = ContentAnalyzer()
-        self.marker_remover = MarkerRemover()
         self.logger = get_merge_logger()
+        # Populated by process_merges: marker -> final 0-based page index in the
+        # merged document. Used by the finalization stage to redact markers without
+        # scanning every page.
+        self.final_marker_pages: Dict[str, int] = {}
 
     def process_merges(self, base_pdf_path: str, content_map: Dict[str, Any],
                        toc_pages: List[int], output_path: str) -> bool:
@@ -54,6 +55,9 @@ class MergeProcessor:
             self.logger.debug("  > Extracted %d root TOC entries from base document.", len(master_toc))
 
             page_offset = 0
+            # Records (anchor_original_page_idx, pages_inserted) for each merge so
+            # we can compute every marker's final page index after all insertions.
+            insertions: List[tuple] = []
             for idx, (marker, data) in enumerate(merge_markers, 1):
                 placeholder = data['placeholder']
                 pdf_path = placeholder['resolved_path']
@@ -120,8 +124,18 @@ class MergeProcessor:
                         to_page=pages_to_insert[-1],
                         start_at=insertion_point_idx
                     )
-                    
+
+                    insertions.append((original_marker_page_idx, num_pages_to_insert))
                     page_offset += num_pages_to_insert
+
+            # Compute each marker's final page index in the merged document. A
+            # marker at original page `oi` is pushed forward by every appendix
+            # inserted after an anchor page strictly before `oi`.
+            self.final_marker_pages = {}
+            for m, mdata in content_map.items():
+                oi = mdata['page_index']
+                shift = sum(k for anchor, k in insertions if anchor < oi)
+                self.final_marker_pages[m] = oi + shift
 
             self.logger.info("  > Applying final hierarchical Table of Contents.")
             output_doc.set_toc(master_toc)

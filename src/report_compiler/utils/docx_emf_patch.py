@@ -7,8 +7,6 @@ from __future__ import absolute_import, division, print_function
 import docx
 from docx.image.exceptions import UnrecognizedImageError
 from docx.image.constants import MIME_TYPE
-from docx.image.exceptions import InvalidImageStreamError
-from docx.image.helpers import BIG_ENDIAN, StreamReader
 from docx.image.image import BaseImageHeader
 import struct
 

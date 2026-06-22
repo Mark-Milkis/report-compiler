@@ -3,7 +3,7 @@ Configuration and constants for the report compiler.
 """
 
 import re
-from typing import Dict, Any, Optional
+from typing import Optional
 
 
 class Config:

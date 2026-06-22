@@ -2,7 +2,6 @@
 Placeholder detection and parsing for DOCX documents.
 """
 
-import re
 from typing import Dict, List, Any, Optional
 from docx import Document
 from ..core.config import Config

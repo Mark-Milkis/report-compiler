@@ -196,18 +196,14 @@ class ContentAnalyzer:
         return final_rect
 
     def bake_annotations(self, pdf_doc: fitz.Document):
-        """Applies all annotations (comments, highlights) permanently to the pages."""
+        """Applies all annotations (comments, highlights) permanently to the pages.
+
+        ``Document.bake`` is a whole-document operation, so it must be called
+        exactly once. Calling it inside a per-page loop bakes the entire
+        document N times (O(N^2)) and was the dominant cost for large reports.
+        """
         self.logger.debug("  > Baking annotations for %d pages...", len(pdf_doc))
-        for page in pdf_doc:
-            pdf_doc.bake(annots=True)  # Apply all annotations to the page
-            self.logger.debug("    - Baked annotations for page %d", page.number + 1)
-
-
-            # for annot in page.annots():
-            #     # Applying the annotation renders it onto the page content
-            #     annot.update(flags=fitz.ANNOT_FLAG_PRINT)
-            #     # Deleting the annotation removes the interactive element
-            #     page.delete_annot(annot)
+        pdf_doc.bake(annots=True)  # Apply all annotations across the whole document
 
     def analyze(self, pdf_path: str, placeholders: dict[str, Any], table_metadata: dict[int, Any]) -> Optional[tuple[dict[str, Any], list[int]]]:
         """
