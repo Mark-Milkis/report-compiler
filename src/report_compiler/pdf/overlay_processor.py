@@ -45,11 +45,24 @@ class OverlayProcessor:
             # This is handled by the compiler's file management.
             return True
 
+        # Cache of opened+baked source documents keyed by resolved path. The same
+        # source PDF is typically referenced by many markers (one per page), so
+        # opening and baking it once and reusing it avoids O(markers x pages) work.
+        source_doc_cache: Dict[str, fitz.Document] = {}
+        # Cache of computed content-crop rectangles keyed by (path, source_page_idx).
+        crop_rect_cache: Dict[Any, fitz.Rect] = {}
+        # Cache of resolved source-page selections keyed by (path, page_spec). The
+        # spec is identical for every page-marker of the same overlay table.
+        selection_cache: Dict[Any, List[int]] = {}
+
         try:
             self.logger.debug("Opening base PDF: %s", base_pdf_path)
             with fitz.open(base_pdf_path) as base_doc:
                 for idx, (marker, data) in enumerate(overlay_markers.items(), 1):
-                    if not self._process_single_overlay(base_doc, marker, data, idx):
+                    if not self._process_single_overlay(
+                        base_doc, marker, data, idx,
+                        source_doc_cache, crop_rect_cache, selection_cache
+                    ):
                         return False
 
                 self.logger.debug("Saving overlaid PDF to: %s", output_path)
@@ -61,9 +74,29 @@ class OverlayProcessor:
         except Exception as e:
             self.logger.error("❌ Error during overlay processing: %s", e, exc_info=True)
             return False
+        finally:
+            for src in source_doc_cache.values():
+                try:
+                    src.close()
+                except Exception:
+                    pass
+
+    def _get_source_doc(self, pdf_path: str,
+                        source_doc_cache: Dict[str, fitz.Document]) -> fitz.Document:
+        """Return an opened, annotation-baked source document, caching by path."""
+        source_doc = source_doc_cache.get(pdf_path)
+        if source_doc is None:
+            self.logger.debug("    > Opening source PDF: %s", pdf_path)
+            source_doc = fitz.open(pdf_path)
+            self.content_analyzer.bake_annotations(source_doc)
+            source_doc_cache[pdf_path] = source_doc
+        return source_doc
 
     def _process_single_overlay(self, base_doc: fitz.Document, marker: str,
-                               data: Dict[str, Any], idx: int) -> bool:
+                               data: Dict[str, Any], idx: int,
+                               source_doc_cache: Dict[str, fitz.Document],
+                               crop_rect_cache: Dict[Any, fitz.Rect],
+                               selection_cache: Dict[Any, List[int]]) -> bool:
         """
         Process a single overlay placeholder.
         """
@@ -100,40 +133,49 @@ class OverlayProcessor:
                             points_to_inches(overlay_rect.width),
                             points_to_inches(overlay_rect.height))
 
-            # Open source PDF
-            self.logger.debug("    > Opening source PDF: %s", pdf_path)
-            with fitz.open(pdf_path) as source_doc:
-                self.content_analyzer.bake_annotations(source_doc)
+            # Open source PDF (cached + baked once per unique source file).
+            source_doc = self._get_source_doc(pdf_path, source_doc_cache)
 
-                # Determine which pages from the source PDF are requested
-                page_spec = placeholder.get('page_spec')
+            # Determine which pages from the source PDF are requested. The spec is
+            # the same for every page-marker of a table, so resolve it once.
+            page_spec = placeholder.get('page_spec')
+            selection_key = (pdf_path, page_spec)
+            selected_source_pages = selection_cache.get(selection_key)
+            if selected_source_pages is None:
                 page_selection = self.page_selector.parse_specification(page_spec)
                 selected_source_pages = self.page_selector.apply_selection(source_doc, page_selection)
                 if not selected_source_pages:
                     # If no spec, assume all pages
                     selected_source_pages = list(range(len(source_doc)))
-                
-                self.logger.debug("    > Source page selection spec '%s' resolved to %d pages.", page_spec, len(selected_source_pages))
+                selection_cache[selection_key] = selected_source_pages
 
-                # Get which page of the overlay this marker represents (1-based)
-                overlay_page_num = data.get('overlay_page_num', 1)
+            self.logger.debug("    > Source page selection spec '%s' resolved to %d pages.", page_spec, len(selected_source_pages))
 
-                # Check if the requested overlay page is valid
-                if overlay_page_num > len(selected_source_pages):
-                    self.logger.error("  ❌ Marker %s requests overlay page %d, but source selection only has %d pages.",
-                                      marker, overlay_page_num, len(selected_source_pages))
-                    return False
+            # Get which page of the overlay this marker represents (1-based)
+            overlay_page_num = data.get('overlay_page_num', 1)
 
-                # Get the specific source page index to overlay
-                source_page_idx = selected_source_pages[overlay_page_num - 1]
-                source_page = source_doc[source_page_idx]
-                target_page = base_doc[page_index]
+            # Check if the requested overlay page is valid
+            if overlay_page_num > len(selected_source_pages):
+                self.logger.error("  ❌ Marker %s requests overlay page %d, but source selection only has %d pages.",
+                                  marker, overlay_page_num, len(selected_source_pages))
+                return False
 
-                self.logger.debug("      - Overlaying source page %d -> Base page %d", source_page_idx + 1, page_index + 1)
+            # Get the specific source page index to overlay
+            source_page_idx = selected_source_pages[overlay_page_num - 1]
+            source_page = source_doc[source_page_idx]
+            target_page = base_doc[page_index]
 
+            self.logger.debug("      - Overlaying source page %d -> Base page %d", source_page_idx + 1, page_index + 1)
+
+            # Content-cropping inspects every drawing/text/image on the page; cache
+            # the result so repeated overlays of the same source page are free.
+            crop_key = (pdf_path, source_page_idx, crop_enabled)
+            crop_rect = crop_rect_cache.get(crop_key)
+            if crop_rect is None:
                 crop_rect = self.content_analyzer.apply_content_cropping(source_page, crop_enabled)
-                
-                self._overlay_page_content(target_page, source_page, overlay_rect, crop_rect)
+                crop_rect_cache[crop_key] = crop_rect
+
+            self._overlay_page_content(target_page, source_page, overlay_rect, crop_rect)
 
             self.logger.info("    ✓ Overlay for %s complete.", placeholder['file_path'])
             return True

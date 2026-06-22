@@ -5,6 +5,7 @@ This module contains the main ReportCompiler class that orchestrates the entire
 report compilation process, from input validation through PDF generation.
 """
 
+import logging
 import os
 import sys
 from typing import Dict, Any, Set
@@ -389,8 +390,14 @@ class ReportCompiler:
         
         self.content_map, self.toc_pages = analysis_result
         self.logger.info(f"{self._log_prefix()}  > PDF analysis complete.")
-        self.logger.debug(f"{self._log_prefix()}  > Content Map: {self.content_map}")
-        self.logger.debug(f"{self._log_prefix()}  > TOC Pages: {self.toc_pages}")
+        # The full content map contains every placeholder's nested metadata
+        # (resolved paths, table text, dims) repeated per page and can be many
+        # megabytes for large reports. Only build a compact marker->page summary,
+        # and only when DEBUG is actually enabled.
+        if self.logger.isEnabledFor(logging.DEBUG):
+            marker_pages = {m: d.get('page_index') for m, d in self.content_map.items()}
+            self.logger.debug(f"{self._log_prefix()}  > Content map (marker -> page index): {marker_pages}")
+            self.logger.debug(f"{self._log_prefix()}  > TOC Pages: {self.toc_pages}")
         return True
 
     def _process_pdf_overlays(self) -> bool:
@@ -463,10 +470,21 @@ class ReportCompiler:
 
         self.logger.info(f"{self._log_prefix()}  > Removing markers from the final PDF...")
         all_markers = list(self.content_map.keys())
+
+        # Determine each marker's page in the PDF being cleaned so the remover can
+        # target specific pages instead of scanning the whole document per marker.
+        # If a merge happened, page indices shifted and the merge processor knows
+        # the final positions; otherwise content-map indices are still accurate.
+        if self.merged_pdf_path:
+            marker_pages = self.merge_processor.final_marker_pages
+        else:
+            marker_pages = {m: d['page_index'] for m, d in self.content_map.items()}
+
         success = self.marker_remover.remove_markers(
             input_pdf_path=source_pdf_for_removal,
             markers=all_markers,
-            output_pdf_path=self.final_pdf_path
+            output_pdf_path=self.final_pdf_path,
+            marker_pages=marker_pages
         )
         if not success:
             self.logger.error(f"{self._log_prefix()}  > ❌ Failed to remove markers from the final PDF.")
