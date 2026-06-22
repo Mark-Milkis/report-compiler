@@ -4,7 +4,6 @@ LibreOffice automation for DOCX to PDF conversion.
 
 import os
 import subprocess
-from typing import Optional
 from ..core.config import Config
 from ..utils.logging_config import get_logger
 

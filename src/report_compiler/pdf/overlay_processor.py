@@ -3,13 +3,11 @@ PDF overlay processing for table-based insertions.
 """
 
 import fitz  # PyMuPDF
-from typing import Dict, List, Any, Optional
-from ..core.config import Config
+from typing import Dict, List, Any
 from ..utils.conversions import points_to_inches
 from ..utils.page_selector import PageSelector
 from ..utils.logging_config import get_overlay_logger
 from .content_analyzer import ContentAnalyzer
-from .marker_remover import MarkerRemover
 
 
 class OverlayProcessor:
@@ -18,7 +16,6 @@ class OverlayProcessor:
     def __init__(self):
         self.page_selector = PageSelector()
         self.content_analyzer = ContentAnalyzer()
-        self.marker_remover = MarkerRemover()
         self.logger = get_overlay_logger()
         self.logger.debug("PyMuPDF (fitz) version: %s, path: %s", fitz.__version__, fitz.__file__)
 

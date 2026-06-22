@@ -7,8 +7,7 @@ report compilation process, from input validation through PDF generation.
 
 import logging
 import os
-import sys
-from typing import Dict, Any, Set
+from typing import Set
 
 from ..utils.file_manager import FileManager
 from ..utils.validators import Validators
@@ -21,7 +20,6 @@ from ..pdf.overlay_processor import OverlayProcessor
 from ..pdf.merge_processor import MergeProcessor
 from ..pdf.marker_remover import MarkerRemover
 from ..utils.logging_config import get_compiler_logger
-from ..core.config import Config
 
 
 class ReportCompiler:
@@ -72,7 +70,7 @@ class ReportCompiler:
 
     def _log_prefix(self) -> str:
         """Provides a prefix for logging based on recursion depth."""
-        return f"  " * self.recursion_level
+        return "  " * self.recursion_level
 
     def run(self, processed_files: Set[str] = None) -> bool:
         """Run the complete report compilation process."""

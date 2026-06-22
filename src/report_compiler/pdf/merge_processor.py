@@ -6,11 +6,9 @@ import fitz  # PyMuPDF
 import shutil
 import os
 from typing import Dict, List, Any, Optional
-from ..core.config import Config
 from ..utils.page_selector import PageSelector
 from ..utils.logging_config import get_merge_logger
 from .content_analyzer import ContentAnalyzer
-from .marker_remover import MarkerRemover
 
 
 class MergeProcessor:
@@ -19,7 +17,6 @@ class MergeProcessor:
     def __init__(self):
         self.page_selector = PageSelector()
         self.content_analyzer = ContentAnalyzer()
-        self.marker_remover = MarkerRemover()
         self.logger = get_merge_logger()
         # Populated by process_merges: marker -> final 0-based page index in the
         # merged document. Used by the finalization stage to redact markers without

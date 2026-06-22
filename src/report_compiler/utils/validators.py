@@ -3,8 +3,7 @@ Validation utilities for file paths and PDF documents.
 """
 
 import os
-import pathlib
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 import fitz  # PyMuPDF
 from ..core.config import Config
 

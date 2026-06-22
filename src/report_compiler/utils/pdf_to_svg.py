@@ -7,8 +7,6 @@ for insertion into Word documents while preserving vector graphics quality.
 
 import os
 import fitz  # PyMuPDF
-from pathlib import Path
-from typing import Optional
 
 from .logging_config import get_module_logger
 

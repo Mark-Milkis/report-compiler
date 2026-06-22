@@ -4,12 +4,10 @@ Report Compiler - CLI logic.
 """
 
 import sys
-import os
 from pathlib import Path
 import typer
 
 from report_compiler.core.compiler import ReportCompiler
-from report_compiler.core.config import Config
 from report_compiler.utils.logging_config import setup_logging, get_logger
 from report_compiler.utils.pdf_to_svg import PdfToSvgConverter
 from report_compiler.utils.word_integration_manager import WordIntegrationManager
