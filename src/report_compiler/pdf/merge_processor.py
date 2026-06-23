@@ -3,7 +3,6 @@ PDF merge processing for paragraph-based insertions.
 """
 
 import fitz  # PyMuPDF
-import shutil
 import os
 from typing import Dict, List, Any, Optional
 from ..utils.page_selector import PageSelector
@@ -23,16 +22,18 @@ class MergeProcessor:
         # scanning every page.
         self.final_marker_pages: Dict[str, int] = {}
 
-    def process_merges(self, base_pdf_path: str, content_map: Dict[str, Any],
-                       toc_pages: List[int], output_path: str) -> bool:
+    def process_merges(self, output_doc: fitz.Document, content_map: Dict[str, Any]) -> bool:
         """
         Process all merge placeholders, inserting PDFs and creating a hierarchical TOC.
 
+        Inserts content directly into the open document. The document is neither
+        opened nor saved here; the caller owns its lifecycle so overlay, merge,
+        and marker removal can share a single open document and a single save.
+
         Args:
-            base_pdf_path: Path to the PDF to insert content into.
+            output_doc: The open document (already carrying any overlays) to
+                insert appendix content into.
             content_map: Dictionary mapping markers to their location and metadata.
-            toc_pages: A list of page numbers that contain the Table of Contents.
-            output_path: Path for the final output PDF.
 
         Returns:
             True if successful, False otherwise.
@@ -44,13 +45,9 @@ class MergeProcessor:
 
         if not merge_markers:
             self.logger.info("No merge placeholders to process.")
-            if os.path.exists(base_pdf_path) and not os.path.samefile(base_pdf_path, output_path):
-                shutil.copy(base_pdf_path, output_path)
             return True
 
         try:
-            self.logger.debug("Opening base PDF for merging: %s", base_pdf_path)
-            output_doc = fitz.open(base_pdf_path)
             master_toc = output_doc.get_toc(simple=False)
             self.logger.debug("  > Extracted %d root TOC entries from base document.", len(master_toc))
 
@@ -139,18 +136,12 @@ class MergeProcessor:
 
             self.logger.info("  > Applying final hierarchical Table of Contents.")
             output_doc.set_toc(master_toc)
-            
-            self.logger.debug("Saving final merged PDF to: %s", output_path)
-            output_doc.save(output_path, garbage=3, deflate=True, clean=True)
             self.logger.info("✓ Merge processing complete.")
             return True
 
         except Exception as e:
             self.logger.error("❌ Error during merge processing: %s", e, exc_info=True)
             return False
-        finally:
-            if 'output_doc' in locals() and output_doc and not output_doc.is_closed:
-                output_doc.close()
 
     def _merge_toc_entries(self, master_toc, appendix_toc, marker_page_num, new_content_start_page_num, placeholder, marker_rect: Optional[List[float]]):
         """Finds the correct position in the master TOC and inserts the appendix TOC."""

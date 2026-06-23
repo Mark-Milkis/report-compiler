@@ -13,17 +13,19 @@ class MarkerRemover:
     def __init__(self):
         self.logger = get_module_logger(__name__)
 
-    def remove_markers(self, input_pdf_path: str, markers: list[str], output_pdf_path: str,
+    def remove_markers(self, pdf_document: fitz.Document, markers: list[str],
                        marker_pages: Optional[Dict[str, int]] = None) -> bool:
         """
-        Removes all specified markers from the PDF by redacting each marker text.
+        Removes all specified markers from the open PDF by redacting each marker text.
+
+        The document is modified in place and is not saved here; the caller owns
+        its lifecycle and performs the single final save.
 
         Args:
-            input_pdf_path: Path to the input PDF file.
+            pdf_document: The open PDF document to redact markers from.
             markers: A list of marker strings to remove.
-            output_pdf_path: Path to save the cleaned PDF file.
             marker_pages: Optional mapping of marker -> known 0-based page index in
-                the input PDF. When supplied (and complete), only those pages are
+                the document. When supplied (and complete), only those pages are
                 searched instead of scanning every page for every marker, which is
                 far cheaper on large documents. Falls back to a full scan if the
                 map is missing or incomplete.
@@ -31,9 +33,8 @@ class MarkerRemover:
         Returns:
             True if successful, False otherwise.
         """
-        self.logger.debug("      Removing %d markers from '%s'...", len(markers), input_pdf_path)
+        self.logger.debug("      Removing %d markers...", len(markers))
         try:
-            pdf_document = fitz.open(input_pdf_path)
             # Redaction options that leave images and vector line-art untouched.
             # The markers are tiny text strings; without these flags every
             # apply_redactions() call reprocesses all images/graphics on the page,
@@ -54,9 +55,7 @@ class MarkerRemover:
                 for page in pdf_document:
                     self._redact_markers_on_page(page, markers, redact_kwargs)
 
-            pdf_document.save(output_pdf_path, garbage=4, deflate=True, clean=True)
-            pdf_document.close()
-            self.logger.debug("      Markers removed. Cleaned PDF saved to '%s'", output_pdf_path)
+            self.logger.debug("      Markers redacted.")
             return True
         except Exception as e:
             self.logger.error("      ❌ Error during marker removal: %s", e, exc_info=True)

@@ -15,93 +15,31 @@ class ContentAnalyzer:
     def __init__(self):
         self.logger = get_module_logger(__name__)
 
-    def find_toc_pages(self, pdf_path: str) -> list[int]:
-        """Identifies pages that appear to be a Table of Contents."""
-        toc_pages = []
-        try:
-            self.logger.debug("  > Scanning for Table of Contents...")
-            doc = fitz.open(pdf_path)
-            # A simple heuristic: look for pages with the title "Table of Contents"
-            for i, page in enumerate(doc):
-                if "table of contents" in page.get_text().lower():
-                    toc_pages.append(i)
-            return toc_pages
-        except Exception as e:
-            self.logger.error("  > ❌ Error analyzing for ToC pages: %s", e, exc_info=True)
-            return []
+    def _expected_markers(
+        self, placeholders: dict[str, Any], table_metadata: Optional[Dict[int, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """Build the set of markers we expect to find, keyed by marker string.
 
-    def find_placeholder_markers(
-        self, pdf_path: str, placeholders: dict[str, Any], table_metadata: dict[int, Any]
-    ) -> dict[str, Any]:
+        Each value carries everything needed to construct the content-map entry
+        once the marker's location is known. Table placeholders contribute one
+        marker per source page (matching the row replication done in the DOCX).
         """
-        Scans the PDF for all placeholder markers and records their locations and metadata.
-        Handles multi-page overlays by searching for each page's unique marker.
+        expected: dict[str, dict[str, Any]] = {}
 
-        Returns:
-            A content_map dictionary mapping a marker string to its location data.
-        """
-        content_map = {}
-        self.logger.debug("  > Scanning PDF for placeholder markers...")
-        try:
-            doc = fitz.open(pdf_path)
-            
-            # Process paragraph placeholders
-            for placeholder in placeholders.get('paragraph', []):
-                self._find_and_map_marker(doc, placeholder, content_map)
+        for placeholder in placeholders.get('paragraph', []):
+            marker = Config.get_merge_marker(placeholder['paragraph_index'])
+            expected[marker] = {'placeholder': placeholder, 'is_table': False}
 
-            # Process table placeholders, handling multi-page overlays
-            for placeholder in placeholders.get('table', []):
-                num_pages = placeholder.get('page_count', 1)
-                
-                for page_num in range(1, num_pages + 1):
-                    # For each page of the overlay, find its corresponding marker
-                    self._find_and_map_marker(doc, placeholder, content_map, table_metadata, page_num)
-
-            self.logger.debug("  > Found %d markers in total.", len(content_map))
-            return content_map
-        except Exception as e:
-            self.logger.error("❌ Error finding placeholder markers in PDF: %s", e, exc_info=True)
-            return {}
-
-    def _find_and_map_marker(self, doc: fitz.Document, placeholder: dict[str, Any], content_map: dict[str, Any], table_metadata: Optional[Dict[int, Any]] = None, page_num: int = 1):
-        """Helper to find a single marker and add it to the content map."""
-        marker = self._get_marker_for_placeholder(placeholder, page_num)
-        if not marker:
-            return
-
-        found_marker = self._search_for_marker_in_doc(doc, marker)
-        if found_marker:
-            page_index, rect = found_marker
-            self.logger.debug("    - Found marker '%s' on page %d at (%.2f, %.2f) inches.",
-                             marker, page_index + 1, points_to_inches(rect.x0), points_to_inches(rect.y0))
-            
-            map_entry = {
-                'placeholder': placeholder,
-                'page_index': page_index,
-                'rect': [rect.x0, rect.y0, rect.x1, rect.y1],
-                'type': placeholder['type']
-            }
-            if placeholder['type'] == 'table':
+        for placeholder in placeholders.get('table', []):
+            num_pages = placeholder.get('page_count', 1)
+            for page_num in range(1, num_pages + 1):
+                marker = Config.get_overlay_marker(placeholder['table_index'], page_num)
+                entry = {'placeholder': placeholder, 'is_table': True, 'overlay_page_num': page_num}
                 if table_metadata:
-                    map_entry['table_dims'] = table_metadata.get(placeholder['table_index'], {})
-                map_entry['overlay_page_num'] = page_num # Add the overlay page number
-            content_map[marker] = map_entry
-        else:
-            self.logger.warning("    - ⚠️ Marker '%s' not found in the PDF.", marker)
+                    entry['table_dims'] = table_metadata.get(placeholder['table_index'], {})
+                expected[marker] = entry
 
-    def _get_marker_for_placeholder(self, placeholder: dict[str, Any], page_num: int = 1) -> Optional[str]:
-        if placeholder.get('type') == 'table':
-            return Config.get_overlay_marker(placeholder['table_index'], page_num)
-        elif placeholder.get('type') == 'paragraph':
-            return Config.get_merge_marker(placeholder['paragraph_index'])
-        return None
-
-    def _search_for_marker_in_doc(self, doc: fitz.Document, marker: str) -> Optional[tuple[int, fitz.Rect]]:
-        for page_index, page in enumerate(doc):
-            rects = page.search_for(marker)
-            if rects:
-                return page_index, rects[0]  # Return page and rect of first find
-        return None
+        return expected
 
     def get_content_bbox(self, pdf_page: fitz.Page) -> Optional[fitz.Rect]:
         """
@@ -205,31 +143,65 @@ class ContentAnalyzer:
         self.logger.debug("  > Baking annotations for %d pages...", len(pdf_doc))
         pdf_doc.bake(annots=True)  # Apply all annotations across the whole document
 
-    def analyze(self, pdf_path: str, placeholders: dict[str, Any], table_metadata: dict[int, Any]) -> Optional[tuple[dict[str, Any], list[int]]]:
+    def analyze(self, pdf_doc: fitz.Document, placeholders: dict[str, Any], table_metadata: dict[int, Any]) -> Optional[dict[str, Any]]:
         """
-        Analyzes the PDF to find all markers and the table of contents.
+        Locate every placeholder marker in the (already open) base PDF.
+
+        This is a single sweep over the document: each page is visited once and
+        searched for any markers not yet found, short-circuiting as soon as all
+        expected markers are located. This replaces the previous approach which
+        opened the PDF twice and scanned the whole document once per marker
+        (O(markers x pages)), plus a separate full-text sweep for a Table of
+        Contents that nothing downstream consumed.
 
         Args:
-            pdf_path: Path to the PDF file.
+            pdf_doc: An open PyMuPDF document for the base PDF.
             placeholders: Dictionary of placeholders.
             table_metadata: Dictionary of table metadata.
 
         Returns:
-            A tuple containing the content_map and a list of TOC page indices, or None on failure.
+            A content_map dictionary mapping each found marker to its location
+            data, or None on failure.
         """
         self.logger.info("  > Starting PDF analysis...")
-        
-        try:
-            toc_pages = self.find_toc_pages(pdf_path)
-            self.logger.info("  > Found %d Table of Contents pages.", len(toc_pages))
 
-            content_map = self.find_placeholder_markers(pdf_path, placeholders, table_metadata)
+        try:
+            pending = self._expected_markers(placeholders, table_metadata)
+            content_map: dict[str, Any] = {}
+
+            for page_index, page in enumerate(pdf_doc):
+                if not pending:
+                    break  # Every expected marker has been located.
+                for marker in list(pending.keys()):
+                    rects = page.search_for(marker)
+                    if not rects:
+                        continue
+                    rect = rects[0]
+                    info = pending.pop(marker)
+                    self.logger.debug("    - Found marker '%s' on page %d at (%.2f, %.2f) inches.",
+                                     marker, page_index + 1,
+                                     points_to_inches(rect.x0), points_to_inches(rect.y0))
+                    map_entry = {
+                        'placeholder': info['placeholder'],
+                        'page_index': page_index,
+                        'rect': [rect.x0, rect.y0, rect.x1, rect.y1],
+                        'type': info['placeholder']['type'],
+                    }
+                    if info['is_table']:
+                        if 'table_dims' in info:
+                            map_entry['table_dims'] = info['table_dims']
+                        map_entry['overlay_page_num'] = info['overlay_page_num']
+                    content_map[marker] = map_entry
+
+            for marker in pending:
+                self.logger.warning("    - ⚠️ Marker '%s' not found in the PDF.", marker)
+
             if not content_map and placeholders.get('total', 0) > 0:
                 # This can happen if the DOCX modification failed to insert markers, or if they were removed during PDF conversion.
                 self.logger.warning("  > ⚠️ No markers were found in the PDF, but placeholders were expected. Downstream processing may fail.")
 
-            self.logger.info("  > PDF analysis complete.")
-            return content_map, toc_pages
+            self.logger.info("  > PDF analysis complete (%d markers located).", len(content_map))
+            return content_map
         except Exception as e:
             self.logger.error("❌ Top-level error during PDF analysis: %s", e, exc_info=True)
             return None

@@ -20,22 +20,29 @@ class DocxProcessor:
         self.logger = get_docx_logger()
 
     def create_modified_docx(
-        self, input_path: str, placeholders: Dict[str, List[Dict]], output_path: str
+        self, input_path: str, placeholders: Dict[str, List[Dict]], output_path: str,
+        doc: Optional[Document] = None
     ) -> Optional[Dict[int, Dict[str, float]]]:
         """
         Create a modified DOCX, replacing placeholders with markers and extracting table dimensions.
 
         Args:
-            input_path: Path to the source DOCX file.
+            input_path: Path to the source DOCX file (used only if ``doc`` is None).
             placeholders: Dictionary of found placeholders.
             output_path: Path to save the modified DOCX.
+            doc: An already-loaded python-docx Document to modify in place. Passing
+                the document parsed during placeholder detection avoids a second
+                full parse of the same (potentially large) file.
 
         Returns:
             A dictionary mapping table indices to their dimensions, or None on failure.
         """
         try:
-            self.logger.debug("  > Loading source DOCX: %s", os.path.basename(input_path))
-            doc = Document(input_path)
+            if doc is None:
+                self.logger.debug("  > Loading source DOCX: %s", os.path.basename(input_path))
+                doc = Document(input_path)
+            else:
+                self.logger.debug("  > Reusing pre-parsed DOCX document.")
             table_metadata = {}
 
             # Process paragraph placeholders first

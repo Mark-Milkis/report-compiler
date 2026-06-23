@@ -3,7 +3,6 @@ Word automation for DOCX to PDF conversion.
 """
 
 import os
-import time
 from typing import Optional
 from ..core.config import Config
 from ..utils.logging_config import get_logger
@@ -21,17 +20,26 @@ class WordConverter:
         self.word_app = None
         self.is_connected = False
         self.logger = get_logger()
+        self._available: Optional[bool] = None
 
     def is_available(self) -> bool:
-        """Checks if the Word application can be automated."""
+        """Checks if the Word application can be automated.
+
+        The result is memoized: probing availability dispatches a COM instance,
+        so for a multi-document (recursive) compile this avoids spinning up and
+        discarding a Word instance once per sub-document.
+        """
+        if self._available is not None:
+            return self._available
         if win32com is None:
+            self._available = False
             return False
-        # A lightweight check without launching the full app
         try:
             win32com.client.Dispatch("Word.Application")
-            return True
+            self._available = True
         except Exception:
-            return False
+            self._available = False
+        return self._available
     
     def connect(self) -> bool:
         """
@@ -88,8 +96,8 @@ class WordConverter:
             doc = self.word_app.Documents.Open(docx_path)
             
             self.logger.info("  > Updating document fields (e.g., Table of Contents)...")
+            # Fields.Update() is a synchronous COM call; no sleep is needed.
             doc.Fields.Update()
-            time.sleep(1) # Give Word a moment to update.
 
             self.logger.debug(f"  > Exporting to PDF: {os.path.basename(pdf_path)}")
             doc.ExportAsFixedFormat(
