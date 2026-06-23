@@ -2,6 +2,7 @@
 File management utilities for temporary files and cleanup.
 """
 
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -12,34 +13,66 @@ from .logging_config import get_file_logger
 
 class FileManager:
     """Manages temporary files and cleanup operations."""
-    
-    def __init__(self, keep_temp: bool = False):
+
+    def __init__(self, keep_temp: bool = False, work_dir: Optional[str] = None):
+        """
+        Args:
+            keep_temp: Whether to keep temporary files for debugging.
+            work_dir: Directory in which to place temporary files. When provided,
+                all temp files are created here (instead of alongside the source
+                document), which keeps cloud-synced source folders free of churn
+                and avoids OneDrive sync/lock issues. The directory is created if
+                needed and removed on cleanup if empty.
+        """
         self.keep_temp = keep_temp
         self.temp_files: List[str] = []
         self.timestamp = int(time.time() * 1000)  # Millisecond timestamp
         self.logger = get_file_logger()
-        self.logger = get_file_logger()
-    
+        self.work_dir = work_dir
+        if self.work_dir:
+            try:
+                os.makedirs(self.work_dir, exist_ok=True)
+            except OSError as e:
+                # Fall back to source-adjacent temp files rather than failing the run.
+                self.logger.warning(
+                    "Could not create temp work directory %s (%s); "
+                    "falling back to source-adjacent temp files.",
+                    self.work_dir, e,
+                )
+                self.work_dir = None
+
     def generate_temp_path(self, base_path: str, suffix: str = "") -> str:
         """
         Generate a temporary file path based on the base path.
-        
+
         Args:
             base_path: Original file path
             suffix: Additional suffix for the temp file
-            
+
         Returns:
             Path to temporary file
         """
-        base_dir = os.path.dirname(base_path)
         base_name = os.path.splitext(os.path.basename(base_path))[0]
         ext = os.path.splitext(base_path)[1]
-        
-        if suffix:
-            temp_name = f"{Config.TEMP_FILE_PREFIX}{base_name}_{suffix}_{self.timestamp}{ext}"
+
+        if self.work_dir:
+            base_dir = self.work_dir
+            # When several source files from different directories share a base
+            # name, a single flat work directory would collide. Disambiguate with
+            # a short hash of the source's directory so the temp names stay unique.
+            digest = hashlib.sha1(
+                os.path.dirname(os.path.abspath(base_path)).encode("utf-8", "ignore")
+            ).hexdigest()[:8]
+            name_core = f"{base_name}_{digest}"
         else:
-            temp_name = f"{Config.TEMP_FILE_PREFIX}{base_name}_{self.timestamp}{ext}"
-        
+            base_dir = os.path.dirname(base_path)
+            name_core = base_name
+
+        if suffix:
+            temp_name = f"{Config.TEMP_FILE_PREFIX}{name_core}_{suffix}_{self.timestamp}{ext}"
+        else:
+            temp_name = f"{Config.TEMP_FILE_PREFIX}{name_core}_{self.timestamp}{ext}"
+
         temp_path = os.path.join(base_dir, temp_name)
         self.temp_files.append(temp_path)
         return temp_path
@@ -106,8 +139,16 @@ class FileManager:
         
         if removed_count == 0 and len(self.temp_files) > 0:
             self.logger.info("  • No temporary files to clean up")
-        
+
         self.temp_files.clear()
+
+        # Remove the per-run work directory if we created one and it is now empty.
+        if self.work_dir and os.path.isdir(self.work_dir):
+            try:
+                os.rmdir(self.work_dir)
+            except OSError:
+                # Not empty (e.g. unexpected leftovers) or in use; leave it in place.
+                pass
     
     def __enter__(self):
         """Context manager entry."""
