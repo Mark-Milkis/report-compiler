@@ -170,6 +170,15 @@ class ReportCompiler:
         # Use a more specific name for the base PDF to avoid collisions in recursion
         base_pdf_suffix = f"base_{self.recursion_level}"
         self.temp_pdf_path = self.file_manager.generate_temp_path(self.output_path, base_pdf_suffix)
+        # The base temp file is always a PDF. If the caller's output path lacked a
+        # ".pdf" extension the generated temp path would too, but the converter
+        # (Word's ExportAsFixedFormat in particular) writes an actual ".pdf" file,
+        # so a later fitz.open() on the extension-less path fails. Guarantee the
+        # ".pdf" suffix here and keep the cleanup list in sync with the real name.
+        if not self.temp_pdf_path.lower().endswith(".pdf"):
+            self.temp_pdf_path = self.file_manager.retarget_temp_path(
+                self.temp_pdf_path, self.temp_pdf_path + ".pdf"
+            )
         self.final_pdf_path = self.output_path
         self.logger.debug(f"{self._log_prefix()}  > Input DOCX: {self.input_path}")
         self.logger.debug(f"{self._log_prefix()}  > Output PDF: {self.final_pdf_path}")

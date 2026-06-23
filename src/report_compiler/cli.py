@@ -366,9 +366,20 @@ def handle_compilation(input_file, output_file, keep_temp, logger, show_progress
         return 1
     
     logger.info(f"Input DOCX: {input_path.absolute()}")
-    
+
     # Validate output directory
     output_path = Path(output_file)
+    # Ensure the output ends in .pdf. Word/LibreOffice always write a PDF and,
+    # when given a name without an extension, Word silently appends ".pdf" to the
+    # file on disk while the pipeline keeps tracking the extension-less name. That
+    # mismatch surfaces later as a confusing "no such file" when the base PDF is
+    # re-opened, so normalize it up front (mirrors the .svg check in svg-import).
+    if output_path.suffix.lower() != ".pdf":
+        normalized = output_path.parent / (output_path.name + ".pdf")
+        logger.warning(
+            f"Output path '{output_path.name}' has no .pdf extension; using '{normalized.name}' instead."
+        )
+        output_path = normalized
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output PDF: {output_path.absolute()}")

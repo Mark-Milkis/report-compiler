@@ -44,6 +44,29 @@ class FileManager:
         self.temp_files.append(temp_path)
         return temp_path
     
+    def retarget_temp_path(self, old_path: str, new_path: str) -> str:
+        """
+        Replace a previously generated temp path with a corrected one.
+
+        Keeps the cleanup tracking list consistent when a caller needs to adjust a
+        path returned by ``generate_temp_path`` (for example to force a ``.pdf``
+        extension) so the file that is actually written still gets cleaned up.
+
+        Args:
+            old_path: The path previously returned by ``generate_temp_path``.
+            new_path: The corrected path to track instead.
+
+        Returns:
+            The new path.
+        """
+        try:
+            index = self.temp_files.index(old_path)
+            self.temp_files[index] = new_path
+        except ValueError:
+            # Not tracked (e.g. caller passed an untracked path); just track the new one.
+            self.temp_files.append(new_path)
+        return new_path
+
     def create_temp_copy(self, source_path: str, suffix: str = "") -> str:
         """
         Create a temporary copy of a file.
