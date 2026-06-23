@@ -22,12 +22,13 @@ from ..pdf.overlay_processor import OverlayProcessor
 from ..pdf.merge_processor import MergeProcessor
 from ..pdf.marker_remover import MarkerRemover
 from ..utils.logging_config import get_compiler_logger
+from ..utils.progress import ProgressReporter
 
 
 class ReportCompiler:
     """Main orchestrator class for report compilation."""
     
-    def __init__(self, input_path: str, output_path: str, keep_temp: bool = False, recursion_level: int = 0, file_manager: FileManager = None, word_converter: WordConverter = None):
+    def __init__(self, input_path: str, output_path: str, keep_temp: bool = False, recursion_level: int = 0, file_manager: FileManager = None, word_converter: WordConverter = None, progress: ProgressReporter = None):
         """
         Initialize the report compiler.
 
@@ -39,6 +40,8 @@ class ReportCompiler:
             file_manager: An existing file manager instance for shared state.
             word_converter: An existing Word converter to reuse across recursive
                 compiles, so a single Word/COM instance serves the whole run.
+            progress: Shared progress reporter for the live status indicator.
+                Defaults to a disabled (no-op) reporter when not supplied.
         """
         self.input_path = os.path.abspath(input_path)
         self.output_path = os.path.abspath(output_path)
@@ -53,6 +56,7 @@ class ReportCompiler:
         self.content_analyzer = ContentAnalyzer()
         self.docx_processor = DocxProcessor()
         self.word_converter = word_converter if word_converter else WordConverter()
+        self.progress = progress if progress is not None else ProgressReporter(enabled=False)
         self.libreoffice_converter = LibreOfficeConverter()
         self.overlay_processor = OverlayProcessor()
         self.merge_processor = MergeProcessor()
@@ -88,6 +92,7 @@ class ReportCompiler:
         processed_files.add(self.input_path)
 
         self.logger.info(f"--- Starting Compilation for: {os.path.basename(self.input_path)} (Depth: {self.recursion_level}) ---")
+        self.progress.enter_document(os.path.basename(self.input_path))
 
         try:
             # The 'with' statement for file_manager is only used by the top-level call
@@ -96,12 +101,12 @@ class ReportCompiler:
                     result = self._execute_pipeline(processed_files)
             else:
                 result = self._execute_pipeline(processed_files)
-            
+
             if result:
                 self.logger.info(f"--- Finished Compilation for: {os.path.basename(self.input_path)} ---")
             else:
                 self.logger.error(f"--- Failed Compilation for: {os.path.basename(self.input_path)} ---")
-            
+
             return result
 
         except Exception as e:
@@ -110,6 +115,7 @@ class ReportCompiler:
         finally:
             # Ensure the shared base PDF document is always released, even on error.
             self._close_pdf_doc()
+            self.progress.exit_document()
             # Remove from set so sibling branches in the recursion tree can refer to this file
             if self.input_path in processed_files:
                 processed_files.remove(self.input_path)
@@ -128,19 +134,31 @@ class ReportCompiler:
             self.pdf_doc = None
 
     def _execute_pipeline(self, processed_files: Set[str]) -> bool:
-        """The core sequence of compilation steps."""
-        if not self._initialize(): return False
-        if not self._validate_paths(): return False
-        if not self._copy_input_to_temp(): return False
-        if not self._find_placeholders(): return False
-        if not self._resolve_docx_inserts(processed_files): return False
-        if not self._validate_placeholders(): return False
-        if not self._modify_docx(): return False
-        if not self._convert_to_pdf(): return False
-        if not self._analyze_base_pdf(): return False
-        if not self._process_pdf_overlays(): return False
-        if not self._process_pdf_merges(): return False
-        if not self._finalize_pdf(): return False
+        """The core sequence of compilation steps.
+
+        Stages are driven from a single table so the live progress indicator and
+        the per-stage log headers stay in lock-step (and the stage count has one
+        source of truth).
+        """
+        stages = [
+            ("Initialization", self._initialize),
+            ("Path Validation", self._validate_paths),
+            ("Copy Input", self._copy_input_to_temp),
+            ("Find Placeholders", self._find_placeholders),
+            ("Recursive DOCX Resolution", lambda: self._resolve_docx_inserts(processed_files)),
+            ("Validate Placeholders", self._validate_placeholders),
+            ("DOCX Modification", self._modify_docx),
+            ("PDF Conversion", self._convert_to_pdf),
+            ("PDF Analysis", self._analyze_base_pdf),
+            ("PDF Overlays", self._process_pdf_overlays),
+            ("PDF Merging", self._process_pdf_merges),
+            ("Finalization", self._finalize_pdf),
+        ]
+        total = len(stages)
+        for num, (name, step) in enumerate(stages, 1):
+            self.progress.set_stage(num, total, name)
+            if not step():
+                return False
         if self.recursion_level == 0:
             self.logger.info(f"\n{self._log_prefix()}=== Report Compilation Successful ===")
         return True
@@ -278,7 +296,8 @@ class ReportCompiler:
                 keep_temp=self.keep_temp,
                 recursion_level=self.recursion_level + 1,
                 file_manager=self.file_manager,
-                word_converter=self.word_converter
+                word_converter=self.word_converter,
+                progress=self.progress
             )
 
             if not sub_compiler.run(processed_files):
