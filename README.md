@@ -127,6 +127,36 @@ report-compiler compile input.docx output.pdf --keep-temp
 report-compiler compile input.docx output.pdf --verbose
 ```
 
+> The output path is normalized to end in `.pdf` automatically, so
+> `report-compiler compile input.docx output` writes `output.pdf`.
+
+#### Temporary Files and Caching
+
+Temporary working files are written to the operating system's temp folder
+(not next to your document). This avoids OneDrive/SharePoint sync locks and
+"Files On‑Demand" placeholder issues that can otherwise cause intermittent
+conversion failures.
+
+Compiled sub-document inserts (recursively compiled `.docx` appendices) are
+cached, so re-running a report — for example after a late-stage failure —
+reuses appendices that already compiled instead of re-converting every one
+through Word. Cache entries are invalidated automatically when a source
+document or any file it references changes.
+
+```bash
+# Use a custom temp directory (overrides the OS temp folder)
+report-compiler compile input.docx output.pdf --temp-dir D:\rc-temp
+
+# Use a custom cache directory
+report-compiler compile input.docx output.pdf --cache-dir D:\rc-cache
+
+# Disable the compiled-document cache for this run
+report-compiler compile input.docx output.pdf --no-cache
+```
+
+Both locations can also be set via the `REPORT_COMPILER_TEMP_DIR` and
+`REPORT_COMPILER_CACHE_DIR` environment variables.
+
 #### PDF to SVG Conversion
 
 ```bash

@@ -62,6 +62,9 @@ def compile_docx(
     verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
     log_file: str = typer.Option(None, help="Log to file in addition to console"),
     no_progress: bool = typer.Option(False, "--no-progress", help="Disable the live progress indicator"),
+    temp_dir: str = typer.Option(None, "--temp-dir", help="Directory for temporary files (default: OS temp folder). Avoids OneDrive/SharePoint sync issues."),
+    cache_dir: str = typer.Option(None, "--cache-dir", help="Directory for the compiled-document cache (default: under OS temp folder)."),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Disable reusing/storing compiled sub-document PDFs across runs."),
     version: bool = typer.Option(False, "--version", callback=version_callback, is_eager=True, help="Show version and exit")
 ):
     """Compile DOCX to PDF."""
@@ -70,7 +73,11 @@ def compile_docx(
     logger.info("=" * 60)
     logger.info(f"Report Compiler v{__version__} - Starting compilation")
     logger.info("=" * 60)
-    return handle_compilation(input_file, output_file, keep_temp, logger, show_progress=not no_progress)
+    return handle_compilation(
+        input_file, output_file, keep_temp, logger,
+        show_progress=not no_progress,
+        temp_dir=temp_dir, cache_dir=cache_dir, use_cache=not no_cache,
+    )
 
 @app.command("svg-import")
 def svg_import(
@@ -351,7 +358,8 @@ def handle_svg_import(input_file, output_file, page, logger) -> int:
             logger.error("=" * 60)
             return 1
 
-def handle_compilation(input_file, output_file, keep_temp, logger, show_progress: bool = True) -> int:
+def handle_compilation(input_file, output_file, keep_temp, logger, show_progress: bool = True,
+                       temp_dir: str = None, cache_dir: str = None, use_cache: bool = True) -> int:
     """Handle the traditional DOCX compilation."""
     logger.info("Mode: DOCX compilation")
     
@@ -366,9 +374,20 @@ def handle_compilation(input_file, output_file, keep_temp, logger, show_progress
         return 1
     
     logger.info(f"Input DOCX: {input_path.absolute()}")
-    
+
     # Validate output directory
     output_path = Path(output_file)
+    # Ensure the output ends in .pdf. Word/LibreOffice always write a PDF and,
+    # when given a name without an extension, Word silently appends ".pdf" to the
+    # file on disk while the pipeline keeps tracking the extension-less name. That
+    # mismatch surfaces later as a confusing "no such file" when the base PDF is
+    # re-opened, so normalize it up front (mirrors the .svg check in svg-import).
+    if output_path.suffix.lower() != ".pdf":
+        normalized = output_path.parent / (output_path.name + ".pdf")
+        logger.warning(
+            f"Output path '{output_path.name}' has no .pdf extension; using '{normalized.name}' instead."
+        )
+        output_path = normalized
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output PDF: {output_path.absolute()}")
@@ -388,7 +407,10 @@ def handle_compilation(input_file, output_file, keep_temp, logger, show_progress
                 input_path=str(input_path.absolute()),
                 output_path=str(output_path.absolute()),
                 keep_temp=keep_temp,
-                progress=progress
+                progress=progress,
+                temp_dir=temp_dir,
+                cache_dir=cache_dir,
+                use_cache=use_cache,
             )
 
             success = compiler.run()

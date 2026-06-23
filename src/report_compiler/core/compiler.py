@@ -7,11 +7,14 @@ report compilation process, from input validation through PDF generation.
 
 import logging
 import os
+import time
 from typing import Set
 
 import fitz  # PyMuPDF
 
+from .config import Config
 from ..utils.file_manager import FileManager
+from ..utils.compile_cache import CompileCache
 from ..utils.validators import Validators
 from ..document.placeholder_parser import PlaceholderParser
 from ..pdf.content_analyzer import ContentAnalyzer
@@ -28,7 +31,7 @@ from ..utils.progress import ProgressReporter
 class ReportCompiler:
     """Main orchestrator class for report compilation."""
     
-    def __init__(self, input_path: str, output_path: str, keep_temp: bool = False, recursion_level: int = 0, file_manager: FileManager = None, word_converter: WordConverter = None, progress: ProgressReporter = None):
+    def __init__(self, input_path: str, output_path: str, keep_temp: bool = False, recursion_level: int = 0, file_manager: FileManager = None, word_converter: WordConverter = None, progress: ProgressReporter = None, temp_dir: str = None, cache_dir: str = None, use_cache: bool = True, compile_cache: CompileCache = None):
         """
         Initialize the report compiler.
 
@@ -42,6 +45,15 @@ class ReportCompiler:
                 compiles, so a single Word/COM instance serves the whole run.
             progress: Shared progress reporter for the live status indicator.
                 Defaults to a disabled (no-op) reporter when not supplied.
+            temp_dir: Override for the base directory of temporary files. When not
+                set, a per-run directory under the OS temp folder is used (see
+                Config.get_temp_base_dir). Only consulted for the top-level call.
+            cache_dir: Override for the compiled-document cache directory. Only
+                consulted for the top-level call.
+            use_cache: Whether to reuse/store compiled sub-document PDFs across
+                runs. Only consulted for the top-level call.
+            compile_cache: An existing cache instance shared across recursive
+                compiles. Created automatically for the top-level call.
         """
         self.input_path = os.path.abspath(input_path)
         self.output_path = os.path.abspath(output_path)
@@ -49,8 +61,21 @@ class ReportCompiler:
         self.recursion_level = recursion_level
         self.logger = get_compiler_logger()
 
-        # Initialize components
-        self.file_manager = file_manager if file_manager else FileManager(keep_temp)
+        # Initialize components. The top-level call owns the shared file manager
+        # (with a per-run work directory under the OS temp folder) and the
+        # compiled-document cache; recursive calls reuse the instances passed in.
+        if file_manager is not None:
+            self.file_manager = file_manager
+        else:
+            run_dir = os.path.join(
+                Config.get_temp_base_dir(temp_dir),
+                f"{Config.RUN_DIR_PREFIX}{int(time.time() * 1000)}_{os.getpid()}",
+            )
+            self.file_manager = FileManager(keep_temp, work_dir=run_dir)
+        if compile_cache is not None:
+            self.compile_cache = compile_cache
+        else:
+            self.compile_cache = CompileCache(Config.get_cache_dir(cache_dir), enabled=use_cache)
         self.validators = Validators()
         self.placeholder_parser = PlaceholderParser()
         self.content_analyzer = ContentAnalyzer()
@@ -170,6 +195,15 @@ class ReportCompiler:
         # Use a more specific name for the base PDF to avoid collisions in recursion
         base_pdf_suffix = f"base_{self.recursion_level}"
         self.temp_pdf_path = self.file_manager.generate_temp_path(self.output_path, base_pdf_suffix)
+        # The base temp file is always a PDF. If the caller's output path lacked a
+        # ".pdf" extension the generated temp path would too, but the converter
+        # (Word's ExportAsFixedFormat in particular) writes an actual ".pdf" file,
+        # so a later fitz.open() on the extension-less path fails. Guarantee the
+        # ".pdf" suffix here and keep the cleanup list in sync with the real name.
+        if not self.temp_pdf_path.lower().endswith(".pdf"):
+            self.temp_pdf_path = self.file_manager.retarget_temp_path(
+                self.temp_pdf_path, self.temp_pdf_path + ".pdf"
+            )
         self.final_pdf_path = self.output_path
         self.logger.debug(f"{self._log_prefix()}  > Input DOCX: {self.input_path}")
         self.logger.debug(f"{self._log_prefix()}  > Output PDF: {self.final_pdf_path}")
@@ -280,14 +314,28 @@ class ReportCompiler:
         for placeholder in docx_inserts:
             # The path from the parser is relative to the document, so make it absolute.
             docx_path = os.path.abspath(os.path.join(self.base_directory, placeholder['file_path']))
-            
+
             self.logger.info(f"{self._log_prefix()}  > Resolving insert: {os.path.basename(docx_path)}")
 
-            # Generate a unique temp PDF path for the compiled DOCX.
-            # The extension must be .pdf for the rest of the process.
+            # Reuse a previously compiled PDF for this exact source (and its
+            # dependencies) if one is cached. This lets a re-run skip the
+            # expensive Word conversion for appendices that already compiled.
+            cache_key = self.compile_cache.compute_key(docx_path)
+            cached_pdf = self.compile_cache.get(cache_key)
+            if cached_pdf:
+                self.logger.info(f"{self._log_prefix()}  > ✓ Reusing cached compilation for {os.path.basename(docx_path)}")
+                placeholder['file_path'] = cached_pdf
+                placeholder['is_recursive_docx'] = False
+                placeholder['original_path'] = docx_path
+                continue
+
+            # Generate a unique temp PDF path for the compiled DOCX. Build it from
+            # a .pdf base name so the path tracked for cleanup matches the file
+            # that is actually written (the rest of the process needs a .pdf).
+            pdf_base = os.path.splitext(docx_path)[0] + ".pdf"
             temp_output_pdf = self.file_manager.generate_temp_path(
-                docx_path, f"recursive_{self.recursion_level}"
-            ).replace(".docx", ".pdf")
+                pdf_base, f"recursive_{self.recursion_level}"
+            )
 
             # Create and run a sub-compiler.
             sub_compiler = ReportCompiler(
@@ -297,12 +345,16 @@ class ReportCompiler:
                 recursion_level=self.recursion_level + 1,
                 file_manager=self.file_manager,
                 word_converter=self.word_converter,
-                progress=self.progress
+                progress=self.progress,
+                compile_cache=self.compile_cache
             )
 
             if not sub_compiler.run(processed_files):
                 self.logger.error(f"{self._log_prefix()}  > ❌ Failed to compile recursive DOCX: {docx_path}")
                 return False
+
+            # Store the freshly compiled PDF in the cache for future runs.
+            self.compile_cache.put(cache_key, temp_output_pdf)
 
             # Update placeholder to point to the new PDF. The path must be absolute.
             self.logger.info(f"{self._log_prefix()}  > ✓ Successfully compiled {os.path.basename(docx_path)} to {os.path.basename(temp_output_pdf)}")
