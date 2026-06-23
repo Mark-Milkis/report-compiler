@@ -138,55 +138,53 @@ success = converter.convert_to_pdf(docx_path, pdf_path)
 
 The Word converter provides better formatting fidelity but requires Windows and installed Word. LibreOffice provides cross-platform compatibility with slightly different output formatting.
 
-### 6. PDF Content Analysis
+### 6. Single in-memory PDF edit session (Analysis → Overlay → Merge → Finalize)
 
-The `ContentAnalyzer` processes the base PDF:
+The base PDF (produced by Word/LibreOffice) is opened **once** and the same
+`fitz.Document` object is threaded through analysis, overlays, merges and marker
+removal, then saved a **single time**. This avoids reparsing/reserializing the
+document between stages and eliminates the previous `with_overlays` and `merged`
+intermediate PDF files (and one of the two full deflate/clean recompressions).
 
 ```python
-content_map, toc_pages = analyzer.analyze(pdf_path, placeholders, table_metadata)
+pdf_doc = fitz.open(base_pdf_path)                      # opened once
+content_map = analyzer.analyze(pdf_doc, placeholders, table_metadata)
+overlay_processor.process_overlays(pdf_doc, content_map)   # in place
+merge_processor.process_merges(pdf_doc, content_map)       # in place
+marker_remover.remove_markers(pdf_doc, markers, marker_pages)  # in place
+pdf_doc.save(output_path, garbage=4, deflate=True, clean=True)  # saved once
+overlay_processor.close_sources()                           # after save
 ```
 
-**Marker Detection:**
-- Searches for all marker text in the PDF using text extraction
-- Records exact position coordinates for each marker
-- Maps markers to their corresponding placeholder metadata
+**Marker Detection (`analyze`):**
+- A single sweep over the open document; each page is visited once and searched
+  only for markers not yet located, short-circuiting once all are found
+  (replacing the previous two opens + O(markers × pages) scan).
+- Records exact position coordinates for each marker and maps them to metadata.
 
 **Annotation Processing:**
-- Automatically detects and bakes PDF annotations into content
-- Ensures annotations are preserved during overlay operations
-- Uses `doc.bake()` for permanent annotation integration
+- Source/appendix annotations are baked once per document via `doc.bake()`.
 
-**TOC Detection:**
-- Identifies Table of Contents pages based on content patterns
-- Used for intelligent TOC merging in INSERT operations
+> Note: overlay source documents are kept open until *after* the final save,
+> because `show_pdf_page()` may reference them until the target is serialized.
+> `OverlayProcessor.close_sources()` releases them once the save completes.
 
-### 7. PDF Processing
+**Overlay Processing (Table-based):** `process_overlays(base_doc, content_map)`
+- Calculates overlay rectangles from marker position + table dimensions.
+- Applies content-aware cropping to source PDFs (unless `crop=false`).
+- Caches opened source docs, crop rects and page selections across a table's
+  per-page markers.
 
-**Overlay Processing (Table-based):**
-```python
-overlay_processor.process_overlays(base_pdf_path, content_map, output_path)
-```
+**Merge Processing (Paragraph-based):** `process_merges(output_doc, content_map)`
+- Inserts appendix PDF pages at marker positions and merges the TOC
+  hierarchically, tracking each marker's final page index for redaction.
 
-- Calculates precise overlay rectangles using marker position + table dimensions
-- Applies content-aware cropping to source PDFs (unless `crop=false`)
-- Overlays selected pages sequentially for multi-page selections
-- Removes markers using redaction (white fill)
+### 7. Finalization
 
-**Merge Processing (Paragraph-based):**
-```python
-merge_processor.process_merges(base_pdf_path, content_map, toc_pages, output_path)
-```
-
-- Inserts complete PDF pages at marker positions
-- Maintains document flow and pagination
-- Merges Table of Contents entries hierarchically
-- Handles page numbering and reference updates
-
-### 8. Finalization
-
-- Removes all temporary files (unless `--keep-temp` specified)
-- Validates final PDF integrity
-- Reports success/failure with detailed logging
+- Redacts placement markers on their (post-merge) pages and performs the single
+  document save (the only `garbage=4, deflate, clean` pass).
+- Removes all temporary files (unless `--keep-temp` specified).
+- Reports success/failure with detailed logging.
 
 ## Key Technical Details
 

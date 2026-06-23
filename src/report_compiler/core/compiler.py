@@ -9,6 +9,8 @@ import logging
 import os
 from typing import Set
 
+import fitz  # PyMuPDF
+
 from ..utils.file_manager import FileManager
 from ..utils.validators import Validators
 from ..document.placeholder_parser import PlaceholderParser
@@ -20,40 +22,46 @@ from ..pdf.overlay_processor import OverlayProcessor
 from ..pdf.merge_processor import MergeProcessor
 from ..pdf.marker_remover import MarkerRemover
 from ..utils.logging_config import get_compiler_logger
+from ..utils.progress import ProgressReporter
 
 
 class ReportCompiler:
     """Main orchestrator class for report compilation."""
     
-    def __init__(self, input_path: str, output_path: str, keep_temp: bool = False, recursion_level: int = 0, file_manager: FileManager = None):
+    def __init__(self, input_path: str, output_path: str, keep_temp: bool = False, recursion_level: int = 0, file_manager: FileManager = None, word_converter: WordConverter = None, progress: ProgressReporter = None):
         """
         Initialize the report compiler.
-        
+
         Args:
             input_path: Path to input DOCX file.
             output_path: Path for output PDF file.
             keep_temp: Whether to keep temporary files for debugging.
             recursion_level: The current recursion depth.
             file_manager: An existing file manager instance for shared state.
+            word_converter: An existing Word converter to reuse across recursive
+                compiles, so a single Word/COM instance serves the whole run.
+            progress: Shared progress reporter for the live status indicator.
+                Defaults to a disabled (no-op) reporter when not supplied.
         """
         self.input_path = os.path.abspath(input_path)
         self.output_path = os.path.abspath(output_path)
         self.keep_temp = keep_temp
         self.recursion_level = recursion_level
         self.logger = get_compiler_logger()
-        
+
         # Initialize components
         self.file_manager = file_manager if file_manager else FileManager(keep_temp)
         self.validators = Validators()
         self.placeholder_parser = PlaceholderParser()
         self.content_analyzer = ContentAnalyzer()
         self.docx_processor = DocxProcessor()
-        self.word_converter = WordConverter()
+        self.word_converter = word_converter if word_converter else WordConverter()
+        self.progress = progress if progress is not None else ProgressReporter(enabled=False)
         self.libreoffice_converter = LibreOfficeConverter()
         self.overlay_processor = OverlayProcessor()
         self.merge_processor = MergeProcessor()
         self.marker_remover = MarkerRemover()
-        
+
         # Process state
         self.placeholders = {}
         self.base_directory = os.path.dirname(self.input_path)
@@ -63,10 +71,10 @@ class ReportCompiler:
         self.temp_docx_path = None
         self.temp_pdf_path = None
         self.final_pdf_path = None
-        self.overlay_pdf_path = None
-        self.merged_pdf_path = None
-        self.toc_pages = []
         self.content_map = {}
+        # The base PDF is opened once and shared across the overlay, merge and
+        # marker-removal stages, then saved exactly once during finalization.
+        self.pdf_doc = None
 
     def _log_prefix(self) -> str:
         """Provides a prefix for logging based on recursion depth."""
@@ -84,6 +92,7 @@ class ReportCompiler:
         processed_files.add(self.input_path)
 
         self.logger.info(f"--- Starting Compilation for: {os.path.basename(self.input_path)} (Depth: {self.recursion_level}) ---")
+        self.progress.enter_document(os.path.basename(self.input_path))
 
         try:
             # The 'with' statement for file_manager is only used by the top-level call
@@ -92,36 +101,64 @@ class ReportCompiler:
                     result = self._execute_pipeline(processed_files)
             else:
                 result = self._execute_pipeline(processed_files)
-            
+
             if result:
                 self.logger.info(f"--- Finished Compilation for: {os.path.basename(self.input_path)} ---")
             else:
                 self.logger.error(f"--- Failed Compilation for: {os.path.basename(self.input_path)} ---")
-            
+
             return result
 
         except Exception as e:
             self.logger.error(f"{self._log_prefix()}❌ A critical error occurred: %s", e, exc_info=True)
             return False
         finally:
+            # Ensure the shared base PDF document is always released, even on error.
+            self._close_pdf_doc()
+            self.progress.exit_document()
             # Remove from set so sibling branches in the recursion tree can refer to this file
             if self.input_path in processed_files:
                 processed_files.remove(self.input_path)
 
+    def _close_pdf_doc(self) -> None:
+        """Close the shared base PDF document and any overlay sources if still open."""
+        try:
+            self.overlay_processor.close_sources()
+        except Exception:
+            pass
+        if self.pdf_doc is not None:
+            try:
+                self.pdf_doc.close()
+            except Exception:
+                pass
+            self.pdf_doc = None
+
     def _execute_pipeline(self, processed_files: Set[str]) -> bool:
-        """The core sequence of compilation steps."""
-        if not self._initialize(): return False
-        if not self._validate_paths(): return False
-        if not self._copy_input_to_temp(): return False
-        if not self._find_placeholders(): return False
-        if not self._resolve_docx_inserts(processed_files): return False
-        if not self._validate_placeholders(): return False
-        if not self._modify_docx(): return False
-        if not self._convert_to_pdf(): return False
-        if not self._analyze_base_pdf(): return False
-        if not self._process_pdf_overlays(): return False
-        if not self._process_pdf_merges(): return False
-        if not self._finalize_pdf(): return False
+        """The core sequence of compilation steps.
+
+        Stages are driven from a single table so the live progress indicator and
+        the per-stage log headers stay in lock-step (and the stage count has one
+        source of truth).
+        """
+        stages = [
+            ("Initialization", self._initialize),
+            ("Path Validation", self._validate_paths),
+            ("Copy Input", self._copy_input_to_temp),
+            ("Find Placeholders", self._find_placeholders),
+            ("Recursive DOCX Resolution", lambda: self._resolve_docx_inserts(processed_files)),
+            ("Validate Placeholders", self._validate_placeholders),
+            ("DOCX Modification", self._modify_docx),
+            ("PDF Conversion", self._convert_to_pdf),
+            ("PDF Analysis", self._analyze_base_pdf),
+            ("PDF Overlays", self._process_pdf_overlays),
+            ("PDF Merging", self._process_pdf_merges),
+            ("Finalization", self._finalize_pdf),
+        ]
+        total = len(stages)
+        for num, (name, step) in enumerate(stages, 1):
+            self.progress.set_stage(num, total, name)
+            if not step():
+                return False
         if self.recursion_level == 0:
             self.logger.info(f"\n{self._log_prefix()}=== Report Compilation Successful ===")
         return True
@@ -133,13 +170,11 @@ class ReportCompiler:
         # Use a more specific name for the base PDF to avoid collisions in recursion
         base_pdf_suffix = f"base_{self.recursion_level}"
         self.temp_pdf_path = self.file_manager.generate_temp_path(self.output_path, base_pdf_suffix)
-        self.overlay_pdf_path = self.file_manager.generate_temp_path(self.output_path, f"with_overlays_{self.recursion_level}")
         self.final_pdf_path = self.output_path
         self.logger.debug(f"{self._log_prefix()}  > Input DOCX: {self.input_path}")
         self.logger.debug(f"{self._log_prefix()}  > Output PDF: {self.final_pdf_path}")
         self.logger.debug(f"{self._log_prefix()}  > Temp DOCX: {self.temp_docx_path}")
         self.logger.debug(f"{self._log_prefix()}  > Temp PDF (Base): {self.temp_pdf_path}")
-        self.logger.debug(f"{self._log_prefix()}  > Temp PDF (Overlaid): {self.overlay_pdf_path}")
         self.logger.info(f"{self._log_prefix()}  > Environment initialized.")
         return True
 
@@ -260,7 +295,9 @@ class ReportCompiler:
                 output_path=temp_output_pdf,
                 keep_temp=self.keep_temp,
                 recursion_level=self.recursion_level + 1,
-                file_manager=self.file_manager
+                file_manager=self.file_manager,
+                word_converter=self.word_converter,
+                progress=self.progress
             )
 
             if not sub_compiler.run(processed_files):
@@ -308,22 +345,19 @@ class ReportCompiler:
             return True
 
         self.logger.info(f"{self._log_prefix()}  > Inserting markers into DOCX for {self.placeholders['total']} placeholders...")
-        # Create a new temp file for the modified version to avoid overwriting the original temp copy
-        modified_temp_path = self.file_manager.generate_temp_path(self.input_path, "modified_with_markers")
+        # Reuse the document already parsed during placeholder detection instead of
+        # re-parsing the same file, and save the modified version straight over the
+        # temp copy (python-docx holds the file in memory, so the read handle is
+        # already closed) — no extra intermediate file or move is needed.
+        preloaded_doc = self.placeholder_parser.get_loaded_document(self.temp_docx_path)
         table_metadata = self.docx_processor.create_modified_docx(
-            self.temp_docx_path, self.placeholders, modified_temp_path
+            self.temp_docx_path, self.placeholders, self.temp_docx_path, doc=preloaded_doc
         )
 
         if table_metadata is None:
             self.logger.error(f"{self._log_prefix()}  > ❌ Failed to create modified DOCX.")
             return False
 
-        # Replace the temp file with the modified version
-        move_success = self.file_manager.move_file(modified_temp_path, self.temp_docx_path)
-        if not move_success:
-            self.logger.error(f"{self._log_prefix()}  > ❌ Failed to replace temp file with modified version.")
-            return False
-            
         self.table_metadata = table_metadata
         self.logger.info(f"{self._log_prefix()}  > Modified DOCX created successfully.")
         return True
@@ -379,14 +413,19 @@ class ReportCompiler:
             return True
 
         self.logger.info(f"{self._log_prefix()}  > Analyzing base PDF for content and markers...")
-        analysis_result = self.content_analyzer.analyze(
-            self.temp_pdf_path, self.placeholders, self.table_metadata
+        # Open the base PDF once. The same document object is carried through the
+        # overlay, merge and marker-removal stages and saved a single time during
+        # finalization, avoiding repeated parse/serialize round-trips and the
+        # intermediate "with_overlays" and "merged" PDF files.
+        self.pdf_doc = fitz.open(self.temp_pdf_path)
+        content_map = self.content_analyzer.analyze(
+            self.pdf_doc, self.placeholders, self.table_metadata
         )
-        if not analysis_result:
+        if content_map is None:
             self.logger.error(f"{self._log_prefix()}  > ❌ PDF analysis failed.")
             return False
-        
-        self.content_map, self.toc_pages = analysis_result
+
+        self.content_map = content_map
         self.logger.info(f"{self._log_prefix()}  > PDF analysis complete.")
         # The full content map contains every placeholder's nested metadata
         # (resolved paths, table text, dims) repeated per page and can be many
@@ -395,40 +434,36 @@ class ReportCompiler:
         if self.logger.isEnabledFor(logging.DEBUG):
             marker_pages = {m: d.get('page_index') for m, d in self.content_map.items()}
             self.logger.debug(f"{self._log_prefix()}  > Content map (marker -> page index): {marker_pages}")
-            self.logger.debug(f"{self._log_prefix()}  > TOC Pages: {self.toc_pages}")
         return True
 
     def _process_pdf_overlays(self) -> bool:
-        """[Stage 10/12: PDF Overlays] Apply overlays to the base PDF."""
+        """[Stage 10/12: PDF Overlays] Apply overlays to the base PDF (in memory)."""
         self.logger.info(f"{self._log_prefix()}[Stage 10/12: PDF Overlays]")
-        
+
         table_placeholders = self.placeholders.get('table', [])
         if not table_placeholders:
             self.logger.info(f"{self._log_prefix()}  > No table placeholders to process as overlays. Skipping.")
-            self.file_manager.copy_file(self.temp_pdf_path, self.overlay_pdf_path)
             return True
 
         self.logger.info(f"{self._log_prefix()}  > Processing overlays...")
         success = self.overlay_processor.process_overlays(
-            base_pdf_path=self.temp_pdf_path,
-            output_path=self.overlay_pdf_path,
+            base_doc=self.pdf_doc,
             content_map=self.content_map
         )
         if not success:
             self.logger.error(f"{self._log_prefix()}  > ❌ Failed to process overlays.")
             return False
-        
+
         self.logger.info(f"{self._log_prefix()}  > Overlays processed successfully.")
         return True
 
     def _process_pdf_merges(self) -> bool:
-        """[Stage 11/12: PDF Merging] Merge inserted PDFs into the main document."""
+        """[Stage 11/12: PDF Merging] Merge inserted PDFs into the main document (in memory)."""
         self.logger.info(f"{self._log_prefix()}[Stage 11/12: PDF Merging]")
-        
+
         paragraph_placeholders = self.placeholders.get('paragraph', [])
         if not paragraph_placeholders:
             self.logger.info(f"{self._log_prefix()}  > No paragraph placeholders to merge. Skipping.")
-            # The overlay_pdf_path is carried forward to the finalization step
             return True
 
         if not self.content_map:
@@ -436,57 +471,55 @@ class ReportCompiler:
             return False
 
         self.logger.info(f"{self._log_prefix()}  > Merging PDF inserts...")
-        # The final PDF before marker removal is created here.
-        self.merged_pdf_path = self.file_manager.generate_temp_path(self.output_path, "merged")
-        
         success = self.merge_processor.process_merges(
-            base_pdf_path=self.overlay_pdf_path,
-            output_path=self.merged_pdf_path,
-            content_map=self.content_map,
-            toc_pages=self.toc_pages
+            output_doc=self.pdf_doc,
+            content_map=self.content_map
         )
         if not success:
             self.logger.error(f"{self._log_prefix()}  > ❌ Failed to merge PDFs.")
             return False
-        
+
         self.logger.info(f"{self._log_prefix()}  > PDF inserts merged successfully.")
         return True
 
     def _finalize_pdf(self) -> bool:
-        """[Stage 12/12: Finalization] Remove markers and save the final PDF."""
+        """[Stage 12/12: Finalization] Remove markers and save the final PDF once."""
         self.logger.info(f"{self._log_prefix()}[Stage 12/12: Finalization]")
-        
-        # If no placeholders were processed, the final PDF is already in place.
+
+        # If no placeholders were processed, the final PDF is already in place
+        # (copied during analysis); nothing was opened in memory.
         if self.placeholders['total'] == 0:
             self.logger.info(f"{self._log_prefix()}  > No markers to remove. Final PDF is ready.")
-            if self.recursion_level > 0:
-                 self.file_manager.copy_file(self.temp_pdf_path, self.output_path)
             return True
-
-        # Determine the source PDF for marker removal
-        source_pdf_for_removal = self.merged_pdf_path if self.merged_pdf_path else self.overlay_pdf_path
 
         self.logger.info(f"{self._log_prefix()}  > Removing markers from the final PDF...")
         all_markers = list(self.content_map.keys())
 
-        # Determine each marker's page in the PDF being cleaned so the remover can
-        # target specific pages instead of scanning the whole document per marker.
-        # If a merge happened, page indices shifted and the merge processor knows
-        # the final positions; otherwise content-map indices are still accurate.
-        if self.merged_pdf_path:
+        # Determine each marker's page in the document so the remover can target
+        # specific pages instead of scanning the whole document per marker. If a
+        # merge happened, page indices shifted and the merge processor knows the
+        # final positions; otherwise content-map indices are still accurate.
+        if self.placeholders.get('paragraph') and self.merge_processor.final_marker_pages:
             marker_pages = self.merge_processor.final_marker_pages
         else:
             marker_pages = {m: d['page_index'] for m, d in self.content_map.items()}
 
         success = self.marker_remover.remove_markers(
-            input_pdf_path=source_pdf_for_removal,
+            pdf_document=self.pdf_doc,
             markers=all_markers,
-            output_pdf_path=self.final_pdf_path,
             marker_pages=marker_pages
         )
         if not success:
             self.logger.error(f"{self._log_prefix()}  > ❌ Failed to remove markers from the final PDF.")
             return False
-        
+
+        # Single save of the fully assembled document: garbage-collect, deflate and
+        # clean only once (previously done on both the merge and the finalize saves).
+        self.logger.info(f"{self._log_prefix()}  > Saving final PDF...")
+        self.pdf_doc.save(self.final_pdf_path, garbage=4, deflate=True, clean=True)
+        # Release the document and the overlay sources (which show_pdf_page() may
+        # reference until the save above completes) now that the save is done.
+        self._close_pdf_doc()
+
         self.logger.info(f"{self._log_prefix()}  > ✓ Final PDF created at: {self.final_pdf_path}")
         return True

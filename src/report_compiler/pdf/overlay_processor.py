@@ -17,16 +17,24 @@ class OverlayProcessor:
         self.page_selector = PageSelector()
         self.content_analyzer = ContentAnalyzer()
         self.logger = get_overlay_logger()
+        # Opened source documents are kept alive here until close_sources() is
+        # called. show_pdf_page() can keep referencing the source document until
+        # the target is saved, so the caller must close these only after the
+        # final save of the base document.
+        self._source_doc_cache: Dict[str, fitz.Document] = {}
         self.logger.debug("PyMuPDF (fitz) version: %s, path: %s", fitz.__version__, fitz.__file__)
 
-    def process_overlays(self, base_pdf_path: str, content_map: Dict[str, Any], output_path: str) -> bool:
+    def process_overlays(self, base_doc: fitz.Document, content_map: Dict[str, Any]) -> bool:
         """
-        Process all overlay placeholders in the base PDF.
+        Process all overlay placeholders directly on the open base document.
+
+        The document is modified in place and is neither opened nor saved here;
+        the caller owns its lifecycle so that overlay, merge, and marker removal
+        can share a single open document and a single final save.
 
         Args:
-            base_pdf_path: Path to base PDF document.
+            base_doc: The open base PDF document to overlay content onto.
             content_map: Dictionary mapping markers to their location and metadata.
-            output_path: Path for output PDF.
 
         Returns:
             bool: True if successful, False otherwise.
@@ -38,14 +46,13 @@ class OverlayProcessor:
 
         if not overlay_markers:
             self.logger.info("No overlay placeholders to process.")
-            # If no overlays, the output is just a copy of the input
-            # This is handled by the compiler's file management.
             return True
 
         # Cache of opened+baked source documents keyed by resolved path. The same
         # source PDF is typically referenced by many markers (one per page), so
         # opening and baking it once and reusing it avoids O(markers x pages) work.
-        source_doc_cache: Dict[str, fitz.Document] = {}
+        # Kept open until close_sources() so the base document can be saved first.
+        source_doc_cache = self._source_doc_cache
         # Cache of computed content-crop rectangles keyed by (path, source_page_idx).
         crop_rect_cache: Dict[Any, fitz.Rect] = {}
         # Cache of resolved source-page selections keyed by (path, page_spec). The
@@ -53,30 +60,32 @@ class OverlayProcessor:
         selection_cache: Dict[Any, List[int]] = {}
 
         try:
-            self.logger.debug("Opening base PDF: %s", base_pdf_path)
-            with fitz.open(base_pdf_path) as base_doc:
-                for idx, (marker, data) in enumerate(overlay_markers.items(), 1):
-                    if not self._process_single_overlay(
-                        base_doc, marker, data, idx,
-                        source_doc_cache, crop_rect_cache, selection_cache
-                    ):
-                        return False
+            for idx, (marker, data) in enumerate(overlay_markers.items(), 1):
+                if not self._process_single_overlay(
+                    base_doc, marker, data, idx,
+                    source_doc_cache, crop_rect_cache, selection_cache
+                ):
+                    return False
 
-                self.logger.debug("Saving overlaid PDF to: %s", output_path)
-                base_doc.save(output_path)
-                self.logger.info("✓ Overlaid PDF saved successfully.")
-
+            self.logger.info("✓ Overlays applied successfully.")
             return True
 
         except Exception as e:
             self.logger.error("❌ Error during overlay processing: %s", e, exc_info=True)
             return False
-        finally:
-            for src in source_doc_cache.values():
-                try:
-                    src.close()
-                except Exception:
-                    pass
+
+    def close_sources(self) -> None:
+        """Close all cached overlay source documents.
+
+        Must be called only after the base document has been saved, because
+        show_pdf_page() may reference these sources until that save completes.
+        """
+        for src in self._source_doc_cache.values():
+            try:
+                src.close()
+            except Exception:
+                pass
+        self._source_doc_cache.clear()
 
     def _get_source_doc(self, pdf_path: str,
                         source_doc_cache: Dict[str, fitz.Document]) -> fitz.Document:

@@ -42,6 +42,16 @@ class PlaceholderParser:
             'total': len(table_placeholders) + len(paragraph_placeholders)
         }
     
+    def get_loaded_document(self, docx_path: str):
+        """Return the parsed Document for ``docx_path`` if it is still cached.
+
+        Lets callers reuse the document parsed during placeholder detection
+        instead of re-parsing the same file.
+        """
+        if self._doc is not None and self._doc_path == docx_path:
+            return self._doc
+        return None
+
     def _load_document(self, docx_path: str) -> None:
         """Load document if not already loaded or path changed."""
         if self._doc is None or self._doc_path != docx_path:

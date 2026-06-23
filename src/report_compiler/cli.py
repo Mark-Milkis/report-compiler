@@ -9,6 +9,7 @@ import typer
 
 from report_compiler.core.compiler import ReportCompiler
 from report_compiler.utils.logging_config import setup_logging, get_logger
+from report_compiler.utils.progress import ProgressReporter
 from report_compiler.utils.pdf_to_svg import PdfToSvgConverter
 from report_compiler.utils.word_integration_manager import WordIntegrationManager
 from report_compiler._version import __version__
@@ -60,6 +61,7 @@ def compile_docx(
     keep_temp: bool = typer.Option(False, help="Keep temporary files for debugging"),
     verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
     log_file: str = typer.Option(None, help="Log to file in addition to console"),
+    no_progress: bool = typer.Option(False, "--no-progress", help="Disable the live progress indicator"),
     version: bool = typer.Option(False, "--version", callback=version_callback, is_eager=True, help="Show version and exit")
 ):
     """Compile DOCX to PDF."""
@@ -68,7 +70,7 @@ def compile_docx(
     logger.info("=" * 60)
     logger.info(f"Report Compiler v{__version__} - Starting compilation")
     logger.info("=" * 60)
-    return handle_compilation(input_file, output_file, keep_temp, logger)
+    return handle_compilation(input_file, output_file, keep_temp, logger, show_progress=not no_progress)
 
 @app.command("svg-import")
 def svg_import(
@@ -349,7 +351,7 @@ def handle_svg_import(input_file, output_file, page, logger) -> int:
             logger.error("=" * 60)
             return 1
 
-def handle_compilation(input_file, output_file, keep_temp, logger) -> int:
+def handle_compilation(input_file, output_file, keep_temp, logger, show_progress: bool = True) -> int:
     """Handle the traditional DOCX compilation."""
     logger.info("Mode: DOCX compilation")
     
@@ -377,15 +379,20 @@ def handle_compilation(input_file, output_file, keep_temp, logger) -> int:
     
     # Run the report compiler
     compiler = None
+    # Only drive the live indicator on an interactive terminal; otherwise it
+    # would emit control sequences into piped/redirected output.
+    progress_enabled = show_progress and sys.stdout.isatty()
     try:
-        compiler = ReportCompiler(
-            input_path=str(input_path.absolute()),
-            output_path=str(output_path.absolute()),
-            keep_temp=keep_temp
-        )
-        
-        success = compiler.run()
-        
+        with ProgressReporter(enabled=progress_enabled) as progress:
+            compiler = ReportCompiler(
+                input_path=str(input_path.absolute()),
+                output_path=str(output_path.absolute()),
+                keep_temp=keep_temp,
+                progress=progress
+            )
+
+            success = compiler.run()
+
         if success:
             logger.info("=" * 60)
             logger.info("🎉 Report compilation completed successfully!")
