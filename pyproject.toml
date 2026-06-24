@@ -31,5 +31,23 @@ dependencies = [
 [project.scripts]
 report-compiler = "report_compiler.cli:main"
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Ship the Word-integration sources (the .dotm/vbaProject.bin are git-ignored build
+# artifacts and are built on demand). This lets `word-integration install` work from a
+# PyPI install, not just a source checkout.
+[tool.setuptools.package-data]
+report_compiler = [
+    "word_integration/*.bas",
+    "word_integration/*.xml",
+    "word_integration/icons/*",
+    "word_integration/skeleton/**/*",
+    "word_integration/seed.dotm",
+]
+
 [tool.setuptools_scm]
 write_to = "src/report_compiler/_version.py"

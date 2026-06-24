@@ -61,7 +61,7 @@ This will:
 
 **Option 2: Manual Installation**
 
-1. **Download the template file**: `ReportCompilerTemplate.dotm` from the `word_integration/` folder
+1. **Download the template file**: `ReportCompilerTemplate.dotm` (build it from a source checkout with `word-integration build-template`, or grab it from a release)
 
 2. **Copy to Word startup folder**:
    ```
@@ -252,7 +252,7 @@ The integration includes error handling for:
 ## Customization
 
 The template is **built from plain-text sources** — no Office RibbonX Editor or manual
-copy-paste required. The tracked sources live in `word_integration/`:
+copy-paste required. The tracked sources live in `src/report_compiler/word_integration/` (shipped with the package):
 
 | Source | Purpose |
 |--------|---------|
@@ -288,7 +288,7 @@ re-run `build-template` (or `package` if only the ribbon/icons changed) and `upd
 
 ### Modifying the macros
 
-1. Edit the `.bas` files in `word_integration/` (e.g. `ReportingTools.bas`)
+1. Edit the `.bas` files in `src/report_compiler/word_integration/` (e.g. `ReportingTools.bas`)
 2. Run `build-template`, then `update`
 3. Restart Word
 

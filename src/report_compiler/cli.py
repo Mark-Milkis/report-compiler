@@ -114,7 +114,12 @@ def install_word_template(
     logger.info("=" * 60)
     logger.info("Installing Word Integration Template")
     logger.info("=" * 60)
-    
+
+    built, build_msg = _ensure_template_built(logger)
+    if not built:
+        logger.error(f"❌ {build_msg}")
+        raise typer.Exit(1)
+
     manager = WordIntegrationManager()
     success, message = manager.install_template()
     
@@ -168,7 +173,12 @@ def update_word_template(
     logger.info("=" * 60)
     logger.info("Updating Word Integration Template")
     logger.info("=" * 60)
-    
+
+    built, build_msg = _ensure_template_built(logger, force=True)
+    if not built:
+        logger.error(f"❌ {build_msg}")
+        raise typer.Exit(1)
+
     manager = WordIntegrationManager()
     success, message = manager.update_template()
     
@@ -193,8 +203,40 @@ def _template_sources():
         "customui": root / "report_compiler_UI.xml",
         "icons": root / "icons",
         "vbaproject_bin": root / "vbaProject.bin",
+        # Static empty macro-enabled template, used only as the carrier to compile the
+        # .bas modules into. Shipped with the package so install can build from a PyPI
+        # install (the real ReportCompilerTemplate.dotm is a build artifact).
+        "seed": root / "seed.dotm",
         "output_dotm": output_dotm,
     }
+
+
+def _ensure_template_built(logger, force: bool = False) -> tuple:
+    """Build ReportCompilerTemplate.dotm from the shipped sources if it's missing.
+
+    Compiles the .bas into the static seed.dotm carrier (needs Word), then assembles
+    the final .dotm from skeleton + ribbon + icons + the compiled VBA. Returns
+    (success, message).
+    """
+    from report_compiler.utils.template_builder import build_vba_bin
+    from report_compiler.utils.template_packager import package_template
+
+    src = _template_sources()
+    if src["output_dotm"].exists() and not force:
+        return True, "Template already built."
+    if not src["seed"].exists():
+        return False, (
+            f"Seed template not found: {src['seed']}. The package is missing seed.dotm "
+            "(needed to compile the Word macros)."
+        )
+    logger.info("  > Building Word template (compiling macros + packaging)...")
+    ok, msg = build_vba_bin(src["root"], src["seed"], src["vbaproject_bin"], logger)
+    if not ok:
+        return False, msg
+    return package_template(
+        src["skeleton"], src["customui"], src["icons"], src["vbaproject_bin"],
+        src["output_dotm"], logger,
+    )
 
 
 @word_app.command("build-vba")
@@ -211,7 +253,7 @@ def build_word_vba(
     logger.info("Compiling VBA modules -> vbaProject.bin")
     logger.info("=" * 60)
     src = _template_sources()
-    success, message = build_vba_bin(src["root"], src["output_dotm"], src["vbaproject_bin"], logger)
+    success, message = build_vba_bin(src["root"], src["seed"], src["vbaproject_bin"], logger)
     if success:
         logger.info(f"✅ {message}")
         raise typer.Exit(0)
@@ -264,7 +306,7 @@ def build_word_template(
     src = _template_sources()
 
     if not skip_vba:
-        ok, msg = build_vba_bin(src["root"], src["output_dotm"], src["vbaproject_bin"], logger)
+        ok, msg = build_vba_bin(src["root"], src["seed"], src["vbaproject_bin"], logger)
         if not ok:
             logger.error(f"❌ {msg}")
             raise typer.Exit(1)

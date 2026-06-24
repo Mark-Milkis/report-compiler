@@ -53,9 +53,10 @@ class WordIntegrationManager:
         Returns:
             Path to the ReportCompilerTemplate.dotm file
         """
-        # Get the package root directory
-        package_root = Path(__file__).parent.parent.parent.parent
-        template_path = package_root / "word_integration" / self.TEMPLATE_FILENAME
+        # word_integration ships inside the package (src/report_compiler/word_integration),
+        # so it's available whether running from source or an installed wheel.
+        package_dir = Path(__file__).parent.parent  # .../report_compiler
+        template_path = package_dir / "word_integration" / self.TEMPLATE_FILENAME
         return template_path
     
     def get_template_destination_path(self) -> Optional[Path]:

@@ -1,0 +1,3 @@
+recursive-include src/report_compiler/word_integration *.bas *.xml *.png *.ico *.svg
+recursive-include src/report_compiler/word_integration/skeleton *
+include src/report_compiler/word_integration/seed.dotm
