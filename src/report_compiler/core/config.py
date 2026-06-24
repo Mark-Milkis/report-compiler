@@ -23,7 +23,11 @@ class Config:
     
     # PDF processing defaults
     DEFAULT_PADDING = 32  # points
-    DEFAULT_CROP_ENABLED = True
+    DEFAULT_CROP_ENABLED = False
+
+    # Marker stored in the AltText of in-document overlay-preview images so they can be
+    # found and stripped again (by the live toggle and the compile-time normalizer).
+    OVERLAY_PREVIEW_MARKER = "RCPREVIEW"
     
     # File handling
     TEMP_FILE_PREFIX = "~temp_"

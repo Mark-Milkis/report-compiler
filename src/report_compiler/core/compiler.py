@@ -284,6 +284,15 @@ class ReportCompiler:
             return False
         
         try:
+            # Collapse any in-document overlay previews (expanded rows + preview images)
+            # back to canonical tags first, so a doc saved mid-preview still compiles.
+            normalized = self.docx_processor.normalize_overlay_previews(self.temp_docx_path)
+            if normalized:
+                self.logger.info(f"{self._log_prefix()}  > Normalized {normalized} overlay preview(s) back to tags.")
+        except Exception as e:
+            self.logger.warning(f"{self._log_prefix()}  > Overlay preview normalization skipped: {e}")
+
+        try:
             self.placeholders = self.placeholder_parser.find_all_placeholders(self.temp_docx_path)
             if self.placeholders['total'] == 0:
                 self.logger.info(f"{self._log_prefix()}  > No placeholders found.")

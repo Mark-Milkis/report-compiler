@@ -1,309 +1,147 @@
 # Report Compiler
 
-A powerful automated tool for engineering teams to create professional PDF reports by embedding PDF content directly into Word documents. Write your reports in Word, add simple placeholders for external PDFs, and compile everything into a polished final report with a single command.
+**Build polished PDF reports straight from Microsoft Word.** Write your report normally, drop in your drawings, calculations, and appendices with a few ribbon buttons, and click **Compile** to get one clean PDF with everything stitched together.
 
-## What It Does
+No more printing to PDF, re-combining files by hand, or fixing page order every time a drawing changes.
 
-Transform your Word documents into comprehensive PDF reports by:
+![The Reporting Tools ribbon in Word](docs/images/ribbon.png)
 
-- **Adding PDF placeholders** in your Word document using simple tags
-- **Automatically inserting** external PDF content (drawings, calculations, appendices)
-- **Precisely positioning** PDF overlays within tables or merging full pages
-- **Compiling everything** into a single professional PDF report
+---
 
-Perfect for engineering reports, technical documentation, and any workflow where you need to combine Word content with external PDF files.
+## What you can do
 
-## Quick Example
+Inside Word you get a **Reporting Tools** tab with buttons for:
 
-1. **Write your report in Word** with placeholders:
+| Button | What it does |
+|--------|--------------|
+| **Insert Appendix** | Add an entire PDF (or specific pages) as full pages in your report |
+| **Insert Overlay** | Drop a PDF page (e.g. a sketch or detail) into a box, sized to fit, with a live page picker |
+| **Insert Image** | Place an image file (PNG, JPG, …) into a box |
+| **Insert PDF Page (Image)** | Convert a PDF page to a crisp image and insert it |
+| **Overlay view** | Flip the whole document between *Tags*, *Quick preview*, and *Full preview* so you can see exactly which pages will be inserted |
+| **Link manager** | See every linked file in one list, check which paths are valid, and fix broken links |
+| **Compile Report** | Turn the whole document into the final PDF |
 
-   ```text
-   This is my engineering report. 
-   
-   [[INSERT: calculations/load_analysis.pdf:1-3]]
-   
-   The table below shows the design sketch:
-   ┌─────────────────────────────────────┐
-   │ [[OVERLAY: drawings/sketch.pdf]]    │
-   └─────────────────────────────────────┘
-   
-   Here's the company logo:
-   ┌─────────────────────────────────────┐
-   │ [[IMAGE: assets/logo.png]]          │
-   └─────────────────────────────────────┘
-   ```
+You keep writing in Word the way you always have. The buttons just insert little **placeholders** that say "put this PDF here," and **Compile** replaces them with the real content.
 
-2. **Run the compiler**:
+---
 
-   ```bash
-   report-compiler report.docx final_report.pdf
-   ```
+## A typical workflow
 
-3. **Get a professional PDF** with all content seamlessly integrated!
+1. Write your report in Word.
+2. Where you want a drawing or appendix, click **Insert Overlay** or **Insert Appendix** and pick the file.
+3. (Optional) Use **Overlay view → Full preview** to see how the inserted pages will look in place.
+4. Click **Compile Report**. A finished PDF is created next to your document.
 
-## Installation
+That's it. If a drawing changes, just replace the file and re-compile — the report updates itself.
 
-### Option 1: Using uvx (Recommended)
+### Insert Overlay — pick exactly the pages you want
 
-The easiest way to install and run Report Compiler is with [uvx](https://docs.astral.sh/uv/guides/tools/):
+When you click **Insert Overlay**, a window shows thumbnails of the PDF's pages. Type a page range or click thumbnails; the selected pages are highlighted so you always know what you're inserting.
 
-```bash
-# Install uv if not already installed. Required version of python will be installed automatically by uv.
-winget install --id=astral-sh.uv  -e
+![The Insert Overlay dialog with page thumbnails](docs/images/overlay-dialog.png)
 
-# Install and run directly (no permanent installation)
-uvx report-compiler@latest compile report.docx output.pdf
+### Overlay view — preview in place
 
-# Or install globally for repeated use
-uvx install report-compiler
-report-compiler compile report.docx output.pdf
-```
+By default overlays show as small placeholders. Switch **Overlay view** to **Full preview** to render the actual pages right in the document and see how everything reflows; switch back to **Tags** when you're done. (Previews are just for looking — your final compile always uses the original full-resolution PDFs.)
 
-### Option 2: Traditional Installation
+![A document showing overlays in Full preview](docs/images/overlay-preview.png)
 
-```bash
-# Install from PyPI
-pip install report-compiler
+### Link manager — keep your references healthy
 
-# Or install from source
-git clone https://github.com/your-repo/report-compiler.git
-cd report-compiler
-pip install -e .
-```
+Open the **Link manager** to see every file your report links to, whether each path is still valid, and jump to or relink anything that moved.
 
-### Word Integration (Optional)
+![The Link manager window](docs/images/link-manager.png)
 
-For enhanced productivity, install the Word add-in that provides buttons to insert placeholders and compile reports:
+---
 
-**Option 1: Using uvx (Recommended)**
+## One-time setup (Windows)
 
-```bash
-# Install Word integration template
+You only do this once per computer. If you're not comfortable with the steps below, your IT or a colleague can run them for you — after that, everything happens with the Word buttons.
+
+Open **PowerShell** and run:
+
+```powershell
+# 1. Install uv (the small tool that runs Report Compiler). Skip if already installed.
+winget install --id=astral-sh.uv -e
+
+# 2. Turn on the Word buttons (registers the helper that Word talks to — no admin needed)
+uvx report-compiler com-server register
+
+# 3. Add the Report Compiler ribbon to Word
 uvx report-compiler word-integration install
-
-# Check installation status
-uvx report-compiler word-integration status
-
-# Update to latest version
-uvx report-compiler word-integration update
-
-# Remove integration
-uvx report-compiler word-integration remove
 ```
 
-**Option 2: Manual Installation**
+Then **restart Word** — you'll see the **Reporting Tools** tab.
 
-1. **Copy the template file** to your Word templates folder:
+To check or undo the setup later:
 
-   ```bash
-   # Download and copy ReportCompilerTemplate.dotm to:
-   # Windows: %APPDATA%\Microsoft\Word\STARTUP\
-   ```
-
-2. **Restart Word** - you'll see new "Report Compiler" ribbon buttons
-
-3. **Use the buttons** to insert placeholders instead of typing them manually
-
-## Requirements
-
-- **Windows** (for Word automation)
-- **Microsoft Word** installed
-- **Python 3.7+**
-
-## Usage
-
-### Command Line Interface
-
-#### Basic Compilation
-
-```bash
-# Compile a Word document to PDF
-report-compiler compile input.docx output.pdf
-
-# Enable debug mode (keeps temporary files)
-report-compiler compile input.docx output.pdf --keep-temp
-
-# Verbose logging
-report-compiler compile input.docx output.pdf --verbose
+```powershell
+uvx report-compiler com-server status        # is the helper registered?
+uvx report-compiler word-integration status   # is the ribbon installed?
+uvx report-compiler word-integration remove    # remove the ribbon
 ```
 
-> The output path is normalized to end in `.pdf` automatically, so
-> `report-compiler compile input.docx output` writes `output.pdf`.
+**Requirements:** Windows, Microsoft Word, and an internet connection the first time (uv downloads what it needs, including the right Python). See [WORD_INTEGRATION.md](WORD_INTEGRATION.md) for a detailed setup and troubleshooting guide.
 
-#### Temporary Files and Caching
+---
 
-Temporary working files are written to the operating system's temp folder
-(not next to your document). This avoids OneDrive/SharePoint sync locks and
-"Files On‑Demand" placeholder issues that can otherwise cause intermittent
-conversion failures.
+## If something goes wrong
 
-Compiled sub-document inserts (recursively compiled `.docx` appendices) are
-cached, so re-running a report — for example after a late-stage failure —
-reuses appendices that already compiled instead of re-converting every one
-through Word. Cache entries are invalidated automatically when a source
-document or any file it references changes.
+| Message | What to do |
+|---------|------------|
+| *"Please save the document first"* | Save your Word document, then try again (links are stored relative to where the document lives). |
+| *"COM Server Not Registered"* | Run `uvx report-compiler com-server register` once, then retry. |
+| A link shows **Missing** in the Link manager | The file moved or was renamed — use **Relink** to point it at the new location. |
+| Compile fails on a PDF | Open the Link manager to find the broken link, or check the page numbers exist in the source PDF. |
 
-```bash
-# Use a custom temp directory (overrides the OS temp folder)
-report-compiler compile input.docx output.pdf --temp-dir D:\rc-temp
+---
 
-# Use a custom cache directory
-report-compiler compile input.docx output.pdf --cache-dir D:\rc-cache
+## For power users — command line
 
-# Disable the compiled-document cache for this run
-report-compiler compile input.docx output.pdf --no-cache
+Everything the buttons do can also be run from a terminal.
+
+```powershell
+# Compile a document to PDF (output defaults to the same name with .pdf)
+uvx report-compiler compile report.docx report.pdf
+
+# Convert PDF page(s) to SVG
+uvx report-compiler svg-import drawing.pdf out.svg --page 1-3
+
+# Interactive menu (compile, convert, manage the Word integration)
+uvx report-compiler
 ```
 
-Both locations can also be set via the `REPORT_COMPILER_TEMP_DIR` and
-`REPORT_COMPILER_CACHE_DIR` environment variables.
+### Placeholder reference
 
-#### PDF to SVG Conversion
-
-```bash
-# Convert single page
-report-compiler svg-import input.pdf output.svg --page 3
-
-# Convert multiple pages
-report-compiler svg-import input.pdf output.svg --page 1-5
-
-# Convert all pages
-report-compiler svg-import input.pdf output.svg --page all
-```
-
-### Using Placeholders in Word
-
-There are two types of placeholders you can use:
-
-#### 1. INSERT Placeholders (Full Page Merging)
-
-Use `INSERT` placeholders to add complete PDF pages into your document. Place these in standalone paragraphs:
+The buttons insert these tags for you, but you can also type them by hand. All paths are relative to the Word document (absolute paths also work).
 
 ```text
-[[INSERT: appendices/structural_analysis.pdf]]
-[[INSERT: calculations/load_analysis.pdf:1-5]]
-[[INSERT: external/report.pdf:2,4,6]]
+[[INSERT: appendices/calcs.pdf]]            All pages of a PDF as full pages
+[[INSERT: appendices/calcs.pdf:1-3,7]]      Specific pages (1–3 and 7)
+[[INSERT: chapters/intro.docx]]             Another Word doc, compiled and inserted
+
+[[OVERLAY: drawings/sketch.pdf]]            A PDF page placed in a 1-cell table
+[[OVERLAY: drawings/sketch.pdf, page=2]]    A specific page
+[[OVERLAY: drawings/sketch.pdf, crop=true]] Trim surrounding whitespace
+
+[[IMAGE: photos/site.png]]                  An image in a 1-cell table
+[[IMAGE: photos/site.png, width=3in]]       With a set width
 ```
 
-**Page Selection Options:**
+Page ranges accept single pages (`5`), ranges (`1-3`), lists (`1,3,5`), open ranges (`2-`), and combinations (`1-3,7,9-`).
 
-- `[[INSERT: file.pdf]]` - All pages
-- `[[INSERT: file.pdf:5]]` - Page 5 only
-- `[[INSERT: file.pdf:1-3]]` - Pages 1, 2, and 3
-- `[[INSERT: file.pdf:1,3,5]]` - Pages 1, 3, and 5
-- `[[INSERT: file.pdf:2-]]` - Pages 2 to end
-- `[[INSERT: file.pdf:1-3,7,9-]]` - Combined: pages 1-3, 7, and 9 to end
+### Working files and caching
 
-#### 2. OVERLAY Placeholders (Table-Based Positioning)
+Temporary files go to your system temp folder (not next to the document, which avoids OneDrive/SharePoint sync issues), and compiled appendices are cached so re-runs are fast. Override with `--temp-dir` / `--cache-dir` or the `REPORT_COMPILER_TEMP_DIR` / `REPORT_COMPILER_CACHE_DIR` environment variables; disable caching with `--no-cache`.
 
-Use `OVERLAY` placeholders to position PDF content precisely within tables. Place these inside single-cell tables:
+---
 
-```text
-[[OVERLAY: drawings/sketch.pdf]]
-[[OVERLAY: diagrams/detail.pdf, page=2]]
-[[OVERLAY: sketches/plan.pdf, page=1-3]]
-[[OVERLAY: drawings/full_page.pdf, crop=false]]
-```
+## Documentation
 
-**Parameters:**
-
-- `page=` - Specify which pages to overlay (same format as INSERT)
-- `crop=` - Control content cropping:
-  - `crop=true` (default): Auto-crop to remove whitespace
-  - `crop=false`: Use full page dimensions
-
-#### 3. IMAGE Placeholders (Direct Image Insertion)
-
-Use `IMAGE` placeholders to insert image files directly into Word documents. Place these inside single-cell tables:
-
-```text
-[[IMAGE: photos/diagram.png]]
-[[IMAGE: charts/graph.jpg, width=3in]]
-[[IMAGE: icons/logo.png, width=2in, height=1in]]
-```
-
-**Supported formats:** PNG, JPG, JPEG, GIF, BMP, TIFF, WEBP
-
-**Parameters:**
-
-- `width=` - Set image width (e.g., `width=2in`, `width=100px`)
-- `height=` - Set image height (e.g., `height=1.5in`, `height=200px`)
-- If no dimensions specified: Auto-fits to table size while maintaining aspect ratio
-- If only width or height specified: Maintains aspect ratio
-
-#### Path Resolution
-
-All paths are resolved relative to your Word document's location:
-
-```text
-# If your Word document is in C:\Reports\
-[[INSERT: appendices/data.pdf]]        → C:\Reports\appendices\data.pdf
-[[OVERLAY: ..\shared\drawing.pdf]]     → C:\shared\drawing.pdf
-[[IMAGE: images/chart.png]]            → C:\Reports\images\chart.png
-[[INSERT: C:\absolute\path\file.pdf]]  → C:\absolute\path\file.pdf
-```
-
-### Word Integration Buttons
-
-If you installed the Word template, you'll have these ribbon buttons:
-
-- **Insert Appendix** - Adds an INSERT placeholder with file browser
-- **Insert Overlay** - Adds an OVERLAY placeholder in a table with options
-- **PDF to SVG** - Converts PDF pages to SVG for direct insertion
-- **Compile Report** - Runs the compiler directly from Word
-
-### Example Workflow
-
-1. **Create your report structure** in Word with regular text and formatting
-2. **Add placeholders** where you want PDF content:
-   - Use tables with OVERLAY placeholders for positioned content
-   - Use paragraphs with INSERT placeholders for full-page appendices
-3. **Save your document** (required for relative path resolution)
-4. **Run the compiler** from command line or Word button
-5. **Get your final PDF** with all content integrated seamlessly
-
-## Troubleshooting
-
-### Common Issues
-
-#### "Document must be saved first"
-
-- Save your Word document before compilation to enable relative path resolution
-
-#### "PDF file not found"
-
-- Check that PDF paths are correct relative to your Word document's location
-- Use the Word integration buttons for automatic relative path creation
-
-#### "Word automation failed"
-
-- Ensure Microsoft Word is installed and can be opened
-- Close any open Word documents that might interfere
-
-#### "Page selection invalid"
-
-- Check page numbers exist in the source PDF
-- Use 1-based page numbering (first page = 1)
-
-### Debug Mode
-
-Enable debug mode to troubleshoot issues:
-
-```bash
-report-compiler compile report.docx output.pdf --keep-temp --verbose
-```
-
-This will:
-
-- Keep all temporary files for inspection
-- Show detailed processing logs
-- Help identify where issues occur
-
-## System Requirements
-
-- **Windows** (for Word automation)
-- **Microsoft Word** installed
-- **Python 3.7+**
+- [WORD_INTEGRATION.md](WORD_INTEGRATION.md) — detailed Word setup, the ribbon, and how the template is built
+- [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) — architecture and contributing
 
 ## License
 
-This project is licensed under the MIT License.
+MIT — see [LICENSE](LICENSE).

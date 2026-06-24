@@ -163,7 +163,15 @@ class ReportCompilerCOMServer:
     polls :meth:`GetJobStatus` / :meth:`GetJobMessage`.
     """
 
-    _public_methods_ = ["CompileAsync", "SvgImportAsync", "GetJobStatus", "GetJobMessage"]
+    _public_methods_ = [
+        "CompileAsync",
+        "SvgImportAsync",
+        "LaunchOverlayDialog",
+        "LaunchLinkManager",
+        "SetOverlayPreview",
+        "GetJobStatus",
+        "GetJobMessage",
+    ]
     _reg_clsid_ = CLSID
     _reg_progid_ = PROGID
     _reg_desc_ = DESC
@@ -194,6 +202,46 @@ class ReportCompilerCOMServer:
         )
         thread.start()
         return job_id
+
+    def LaunchOverlayDialog(self, doc_path, anchor):
+        """Spawn the Insert PDF Overlay GUI as its own process and return immediately.
+
+        Not part of the async-job model — this just launches a UI process, which then
+        attaches to Word itself to write back. Uses this interpreter (the stable tool
+        env) so PySide6 and the package are available.
+        """
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "report_compiler.gui",
+                "overlay",
+                "--doc",
+                str(doc_path),
+                "--anchor",
+                str(anchor),
+            ],
+            close_fds=True,
+        )
+        return "launched"
+
+    def LaunchLinkManager(self, doc_path):
+        """Spawn the Link Manager GUI as its own process and return immediately."""
+        subprocess.Popen(
+            [sys.executable, "-m", "report_compiler.gui", "link-manager", "--doc", str(doc_path)],
+            close_fds=True,
+        )
+        return "launched"
+
+    def SetOverlayPreview(self, doc_path, mode):
+        """Switch the document's overlay view: 'tags', 'quick', or 'full'.
+
+        Runs synchronously (manipulates the live document) and returns a short summary.
+        Errors are raised to the COM client.
+        """
+        from report_compiler.document import overlay_preview
+
+        return overlay_preview.set_overlay_view(str(doc_path), str(mode))
 
     def GetJobStatus(self, job_id):
         job = _JOBS.get(str(job_id))
