@@ -31,28 +31,33 @@ class PageSelector:
                 'open_range_start': None,
                 'total_specified': 0
             }
-        
+
         pages = []
         open_range_start = None
-        
-        # Find all matches in the specification
-        matches = self.page_spec_regex.findall(page_spec.strip())
-        
-        for match in matches:
-            start_str, end_str = match
-            start = int(start_str)
-            
-            # Check if this is truly an open range (has a dash) vs just a single page
-            if end_str == '' and '-' in page_spec:  # Open range (e.g., "9-")
-                open_range_start = start - 1  # Convert to 0-based
-                break
-            elif end_str:  # Closed range (e.g., "1-3")
-                end = int(end_str)
-                for page_num in range(start, end + 1):
-                    pages.append(page_num - 1)  # Convert to 0-based
-            else:  # Single page (e.g., "7")
-                pages.append(start - 1)  # Convert to 0-based
-        
+
+        # Parse each comma-separated token independently. Whether a token is an open
+        # range ("9-") must be decided from the token itself, not from whether the whole
+        # spec contains a dash — otherwise "1-3,5" wrongly reads "5" as open-ended.
+        for token in page_spec.split(','):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                if '-' in token:  # Range: "1-3" (closed) or "9-" (open)
+                    start_str, end_str = token.split('-', 1)
+                    start = int(start_str.strip())
+                    end_str = end_str.strip()
+                    if end_str == '':
+                        open_range_start = start - 1  # Convert to 0-based
+                    else:
+                        end = int(end_str)
+                        for page_num in range(start, end + 1):
+                            pages.append(page_num - 1)  # Convert to 0-based
+                else:  # Single page: "7"
+                    pages.append(int(token) - 1)  # Convert to 0-based
+            except ValueError:
+                continue  # Skip malformed tokens
+
         return {
             'pages': sorted(list(set(pages))),  # Remove duplicates and sort
             'use_all': False,
