@@ -25,6 +25,7 @@ dependencies = [
     "rich>=13.0.0",
     "pywin32; sys_platform == 'win32'",
     "questionary>=2.0.1",
+    "PySide6>=6.6",
 ]
 
 [project.scripts]
