@@ -34,6 +34,24 @@
                   supertip="Converts a single PDF page to high-quality SVG and inserts it as an image."/>
         </group>
         
+        <group id="groupOverlayPreview" label="Overlay Preview">
+          <dropDown id="ddOverlayView"
+                  label="View"
+                  onAction="OnOverlayViewChange"
+                  screentip="Overlay view"
+                  supertip="Switch all overlays between tags, quick preview, and full preview.">
+            <item id="ovTags" label="Tags"/>
+            <item id="ovQuick" label="Quick preview"/>
+            <item id="ovFull" label="Full preview"/>
+          </dropDown>
+          <button id="btnRepairOverlays"
+                  label="Repair overlays"
+                  onAction="RepairOverlays"
+                  imageMso="Refresh"
+                  screentip="Repair overlays"
+                  supertip="Force all overlays back to their tag form (recovery)."/>
+        </group>
+
         <group id="groupCompiler" label="Compiler">
           <button id="btnCompileReport"
                   label="Compile Report"

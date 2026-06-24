@@ -6,11 +6,37 @@ Kept separate from the PySide6 dialog so it can be unit-tested without a GUI or 
 from __future__ import annotations
 
 import os
-from typing import List, Set
+from typing import List, Optional, Set
 
+from report_compiler.core.config import Config
 from report_compiler.utils.page_selector import PageSelector
 
 _selector = PageSelector()
+
+
+def parse_overlay_tag(tag: str) -> Optional[dict]:
+    """Parse an ``[[OVERLAY: file, page=…, crop=…]]`` tag into its parts.
+
+    Returns ``{'file', 'page' (spec str or None), 'crop' (bool)}`` or None if not an
+    overlay tag. Mirrors the parameter handling in placeholder_parser.
+    """
+    match = Config.OVERLAY_REGEX.search(tag)
+    if not match:
+        return None
+    result = {"file": match.group(1).strip(), "page": None, "crop": Config.DEFAULT_CROP_ENABLED}
+    params = match.group(2)
+    if params:
+        for part in (p.strip() for p in params.split(",")):
+            if "=" in part:
+                key, value = part.split("=", 1)
+                key, value = key.strip().lower(), value.strip()
+                if key == "page":
+                    result["page"] = value
+                elif key == "crop":
+                    result["crop"] = value.lower() in ("true", "1", "yes", "on", "enabled")
+            elif part and result["page"] is None:
+                result["page"] = part
+    return result
 
 
 def expand_selection(spec: str, total_pages: int) -> Set[int]:

@@ -167,6 +167,7 @@ class ReportCompilerCOMServer:
         "CompileAsync",
         "SvgImportAsync",
         "LaunchOverlayDialog",
+        "SetOverlayPreview",
         "GetJobStatus",
         "GetJobMessage",
     ]
@@ -222,6 +223,16 @@ class ReportCompilerCOMServer:
             close_fds=True,
         )
         return "launched"
+
+    def SetOverlayPreview(self, doc_path, mode):
+        """Switch the document's overlay view: 'tags', 'quick', or 'full'.
+
+        Runs synchronously (manipulates the live document) and returns a short summary.
+        Errors are raised to the COM client.
+        """
+        from report_compiler.document import overlay_preview
+
+        return overlay_preview.set_overlay_view(str(doc_path), str(mode))
 
     def GetJobStatus(self, job_id):
         job = _JOBS.get(str(job_id))
