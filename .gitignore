@@ -68,3 +68,8 @@ test_*.pdf
 *.log
 
 uv.lock
+
+# Word integration build artifacts (regenerate with `word-integration build-template`).
+# Sources are tracked: *.bas, report_compiler_UI.xml, icons/, skeleton/.
+word_integration/ReportCompilerTemplate.dotm
+word_integration/vbaProject.bin
