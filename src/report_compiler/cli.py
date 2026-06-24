@@ -173,6 +173,107 @@ def update_word_template(
         logger.error(f"❌ {message}")
         raise typer.Exit(1)
 
+def _template_sources():
+    """Resolve the tracked template-source paths (only present in a source checkout)."""
+    manager = WordIntegrationManager()
+    output_dotm = manager.get_template_source_path()
+    root = output_dotm.parent
+    return {
+        "root": root,
+        "skeleton": root / "skeleton",
+        "customui": root / "report_compiler_UI.xml",
+        "icons": root / "icons",
+        "vbaproject_bin": root / "vbaProject.bin",
+        "output_dotm": output_dotm,
+    }
+
+
+@word_app.command("build-vba")
+def build_word_vba(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Compile the .bas modules into vbaProject.bin (maintenance; needs Word)."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    from report_compiler.utils.template_builder import build_vba_bin
+
+    logger.info("=" * 60)
+    logger.info("Compiling VBA modules -> vbaProject.bin")
+    logger.info("=" * 60)
+    src = _template_sources()
+    success, message = build_vba_bin(src["root"], src["output_dotm"], src["vbaproject_bin"], logger)
+    if success:
+        logger.info(f"✅ {message}")
+        raise typer.Exit(0)
+    logger.error(f"❌ {message}")
+    raise typer.Exit(1)
+
+
+@word_app.command("package")
+def package_word_template(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Assemble the .dotm from tracked sources (ribbon + icons + vbaProject.bin). No Word."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    from report_compiler.utils.template_packager import package_template
+
+    logger.info("=" * 60)
+    logger.info("Packaging .dotm from sources")
+    logger.info("=" * 60)
+    src = _template_sources()
+    success, message = package_template(
+        src["skeleton"], src["customui"], src["icons"], src["vbaproject_bin"],
+        src["output_dotm"], logger,
+    )
+    if success:
+        logger.info(f"✅ {message}")
+        logger.info("")
+        logger.info("Install/refresh it in Word with: word-integration update")
+        raise typer.Exit(0)
+    logger.error(f"❌ {message}")
+    raise typer.Exit(1)
+
+
+@word_app.command("build-template")
+def build_word_template(
+    skip_vba: bool = typer.Option(False, "--skip-vba", help="Reuse existing vbaProject.bin; only re-package"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Full rebuild: compile VBA (needs Word) then package the .dotm from sources."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    from report_compiler.utils.template_builder import build_vba_bin
+    from report_compiler.utils.template_packager import package_template
+
+    logger.info("=" * 60)
+    logger.info("Rebuilding Word Template (VBA + package)")
+    logger.info("=" * 60)
+    src = _template_sources()
+
+    if not skip_vba:
+        ok, msg = build_vba_bin(src["root"], src["output_dotm"], src["vbaproject_bin"], logger)
+        if not ok:
+            logger.error(f"❌ {msg}")
+            raise typer.Exit(1)
+        logger.info(f"✅ {msg}")
+
+    ok, msg = package_template(
+        src["skeleton"], src["customui"], src["icons"], src["vbaproject_bin"],
+        src["output_dotm"], logger,
+    )
+    if ok:
+        logger.info(f"✅ {msg}")
+        logger.info("")
+        logger.info("Install/refresh it in Word with: word-integration update")
+        raise typer.Exit(0)
+    logger.error(f"❌ {msg}")
+    raise typer.Exit(1)
+
+
 @word_app.command("status")
 def word_integration_detailed_status(
     verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
@@ -219,6 +320,110 @@ def word_integration_detailed_status(
     
     raise typer.Exit(0 if status['supported'] else 1)
 
+# Create a subcommand app for COM server commands
+com_app = typer.Typer(
+    help="Manage the Report Compiler COM server (Word integration)",
+    name="com-server"
+)
+
+
+@com_app.command("register")
+def com_server_register(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Register the COM server (per-user, no admin) so Word can drive compilation."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    from report_compiler import com_server
+
+    logger.info("=" * 60)
+    logger.info("Registering Report Compiler COM Server")
+    logger.info("=" * 60)
+    try:
+        command = com_server.bootstrap_register()
+        logger.info(f"✅ Registered '{com_server.PROGID}'")
+        logger.info(f"   LocalServer32: {command}")
+        logger.info("")
+        logger.info("Word can now use 'CreateObject(\"ReportCompiler.Application\")'.")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Registration failed: {e}", exc_info=verbose)
+        raise typer.Exit(1)
+    raise typer.Exit(0)
+
+
+@com_app.command("unregister")
+def com_server_unregister(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Remove the per-user COM server registration."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    from report_compiler import com_server
+
+    logger.info("=" * 60)
+    logger.info("Unregistering Report Compiler COM Server")
+    logger.info("=" * 60)
+    try:
+        com_server.unregister_self()
+        logger.info(f"✅ Unregistered '{com_server.PROGID}'")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unregistration failed: {e}", exc_info=verbose)
+        raise typer.Exit(1)
+    raise typer.Exit(0)
+
+
+@com_app.command("status")
+def com_server_status(
+    verbose: bool = typer.Option(False, "-v", "--verbose", "--debug", help="Enable verbose logging (DEBUG level)"),
+    log_file: str = typer.Option(None, help="Log to file in addition to console")
+):
+    """Show whether the COM server is registered."""
+    setup_logging(log_file=log_file, verbose=verbose)
+    logger = get_logger()
+    from report_compiler import com_server
+
+    logger.info("=" * 60)
+    logger.info("Report Compiler COM Server Status")
+    logger.info("=" * 60)
+    try:
+        info = com_server.status()
+    except Exception as e:
+        logger.error(f"❌ {e}")
+        raise typer.Exit(1)
+
+    logger.info(f"ProgID: {info['progid']}")
+    logger.info(f"CLSID:  {info['clsid']}")
+    logger.info(f"Registered: {'Yes' if info['registered'] else 'No'}")
+    if info['registered']:
+        logger.info(f"LocalServer32: {info['local_server']}")
+        logger.info(f"Class spec:    {info['class_spec']}")
+    else:
+        logger.info("")
+        logger.info("💡 To register, run: uvx report-compiler com-server register")
+    logger.info("=" * 60)
+    raise typer.Exit(0 if info['registered'] else 1)
+
+
+@com_app.command("_register-self", hidden=True)
+def com_server_register_self():
+    """Internal: write the registration for the currently running interpreter.
+
+    Invoked by 'register' from inside the stable uv-tool install so the registry
+    captures a path that survives uvx's ephemeral environments.
+    """
+    from report_compiler import com_server
+
+    command = com_server.register_self()
+    typer.echo(f"Registered {com_server.PROGID}: {command}")
+    raise typer.Exit(0)
+
+
 from report_compiler import interactive_menu
 
 @app.command("interactive")
@@ -228,6 +433,8 @@ def interactive_mode():
 
 # Add the word-integration subcommand app to the main app
 app.add_typer(word_app, name="word-integration")
+# Add the com-server subcommand app to the main app
+app.add_typer(com_app, name="com-server")
 
 def main():
     if len(sys.argv) == 1:

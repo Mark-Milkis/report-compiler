@@ -69,18 +69,38 @@ def handle_word_integration():
     choice = questionary.select(
         "What do you want to do?",
         choices=[
-            "Install",
-            "Remove",
-            "Update",
-            "Status",
+            "Install template",
+            "Remove template",
+            "Update template",
+            "Template status",
+            "Rebuild template (VBA + package)",
+            "Compile VBA only (needs Word)",
+            "Package .dotm only (no Word)",
+            "Register COM server",
+            "Unregister COM server",
+            "COM server status",
             "Back"
         ]
     ).ask()
 
-    if choice == "Back":
+    # Map menu labels to CLI argument lists.
+    actions = {
+        "Install template": ["word-integration", "install"],
+        "Remove template": ["word-integration", "remove"],
+        "Update template": ["word-integration", "update"],
+        "Template status": ["word-integration", "status"],
+        "Rebuild template (VBA + package)": ["word-integration", "build-template"],
+        "Compile VBA only (needs Word)": ["word-integration", "build-vba"],
+        "Package .dotm only (no Word)": ["word-integration", "package"],
+        "Register COM server": ["com-server", "register"],
+        "Unregister COM server": ["com-server", "unregister"],
+        "COM server status": ["com-server", "status"],
+    }
+
+    if choice == "Back" or choice is None:
         return
 
-    args = ["word-integration", choice.lower()]
+    args = actions[choice]
 
     try:
         app(args, standalone_mode=False)
