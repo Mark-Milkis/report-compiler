@@ -52,6 +52,16 @@
                   supertip="Force all overlays back to their tag form (recovery)."/>
         </group>
 
+        <group id="groupLinks" label="Links">
+          <button id="btnLinkManager"
+                  label="Link manager"
+                  size="large"
+                  onAction="LaunchLinkManagerUI"
+                  imageMso="HyperlinkInsert"
+                  screentip="Link manager"
+                  supertip="List every link in the document, check validity, and fix or relink paths."/>
+        </group>
+
         <group id="groupCompiler" label="Compiler">
           <button id="btnCompileReport"
                   label="Compile Report"

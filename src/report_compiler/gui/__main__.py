@@ -18,6 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     overlay.add_argument("--doc", default="", help="Local path of the active Word document")
     overlay.add_argument("--anchor", default="", help="Bookmark name to insert at")
 
+    links = sub.add_parser("link-manager", help="Link manager window")
+    links.add_argument("--doc", default="", help="Local path of the active Word document")
+
     args = parser.parse_args(argv)
 
     if args.command == "overlay":
@@ -26,6 +29,15 @@ def main(argv: list[str] | None = None) -> int:
 
         app = QApplication(sys.argv)
         dialog = OverlayDialog(doc_path=args.doc, anchor=args.anchor)
+        dialog.show()
+        return app.exec()
+
+    if args.command == "link-manager":
+        from PySide6.QtWidgets import QApplication
+        from report_compiler.gui.link_manager_dialog import LinkManagerDialog
+
+        app = QApplication(sys.argv)
+        dialog = LinkManagerDialog(doc_path=args.doc)
         dialog.show()
         return app.exec()
 

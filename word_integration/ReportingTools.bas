@@ -426,6 +426,33 @@ Private Function GetImagePath() As String
 End Function
 
 
+Public Sub LaunchLinkManagerUI(control As IRibbonControl)
+    ' Opens the Link Manager window via the COM server.
+    Dim doc As Document
+    Dim localDocPath As String
+    Dim compiler As Object
+
+    Set doc = ActiveDocument
+    If doc.Path = "" Then
+        MsgBox "Please save the document first.", vbExclamation, "Save Document"
+        Exit Sub
+    End If
+    localDocPath = GetLocalPath(doc.FullName, , True)
+
+    On Error GoTo ComError
+    Set compiler = CreateObject("ReportCompiler.Application")
+    compiler.LaunchLinkManager localDocPath
+    Set compiler = Nothing
+    Exit Sub
+
+ComError:
+    MsgBox "Could not reach the Report Compiler COM server." & vbCrLf & vbCrLf & _
+           "Register it first by running:" & vbCrLf & _
+           "    uvx report-compiler com-server register", _
+           vbCritical, "COM Server Not Registered"
+    Set compiler = Nothing
+End Sub
+
 Public Sub OnOverlayViewChange(control As IRibbonControl, id As String, index As Integer)
     ' Ribbon "Overlay view" dropdown: 0 = Tags, 1 = Quick preview, 2 = Full preview.
     Dim mode As String
