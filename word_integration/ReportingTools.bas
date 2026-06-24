@@ -172,12 +172,13 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     Dim intPageNumber As Integer
     Dim tempSvgFolder As String
     Dim tempSvgPath As String
-    Dim cmdString As String
     Dim doc As Document
     Dim fso As Object
-    Dim i As Integer
-    Dim maxWait As Integer
-    
+    Dim compiler As Object
+    Dim jobId As String
+    Dim jobStatus As String
+    Dim waitTime As Single
+
     Set doc = ActiveDocument
     
     ' Ensure the document is saved before proceeding.
@@ -219,45 +220,35 @@ Public Sub InsertPdfAsSvg(control As IRibbonControl)
     ' Define temporary SVG path (base name)
     tempSvgPath = tempSvgFolder & "\page.svg"
     
-    ' Build the command string for SVG conversion using local PDF path
-    cmdString = "uvx report-compiler svg-import --page " & pageNumber & " " & _
-                Chr(34) & localPdfPath & Chr(34) & " " & Chr(34) & tempSvgPath & Chr(34)
-    
-    Debug.Print "Executing command: " & cmdString
+    ' Convert via the Report Compiler COM server (async job + status polling),
+    ' instead of shelling out. Word stays responsive while we poll.
+    On Error GoTo ComError
+    Set compiler = CreateObject("ReportCompiler.Application")
+    jobId = compiler.SvgImportAsync(localPdfPath, tempSvgPath, pageNumber)
 
-    ' Execute the conversion command
-    On Error Resume Next
-    Shell cmdString, vbHide
-    If Err.Number <> 0 Then
-        MsgBox "Failed to start the PDF to SVG converter. Please check that uvx is installed and in your PATH.", vbCritical, "Execution Error"
-        On Error GoTo 0
-        GoTo Cleanup
-    End If
-    On Error GoTo 0
-    
-    ' Wait for SVG files to be created (up to 30 seconds)
-    maxWait = 300 ' 30 seconds in 100ms increments
-    For i = 1 To maxWait
-        ' Check if any SVG files exist in the temp folder
-        If fso.FolderExists(tempSvgFolder) Then
-            If fso.GetFolder(tempSvgFolder).Files.Count > 0 Then
-                Exit For
-            End If
-        End If
-        ' Wait 100ms (Word VBA does not have Application.Wait)
-        Dim waitTime As Single
-        waitTime = Timer + 0.1
+    Do
+        ' Yield to Word and wait ~250ms between status checks (VBA has no Sleep).
+        waitTime = Timer + 0.25
         Do While Timer < waitTime
             DoEvents
         Loop
-    Next i
-    
-    ' Check if any files were created
-    If Not fso.FolderExists(tempSvgFolder) Or fso.GetFolder(tempSvgFolder).Files.Count = 0 Then
-        MsgBox "SVG conversion failed or timed out. Please check the PDF file and page specification.", vbExclamation, "Conversion Failed"
+        jobStatus = compiler.GetJobStatus(jobId)
+    Loop While jobStatus = "pending" Or jobStatus = "running"
+    On Error GoTo 0
+
+    If jobStatus <> "succeeded" Then
+        MsgBox "SVG conversion failed:" & vbCrLf & compiler.GetJobMessage(jobId), vbExclamation, "Conversion Failed"
+        Set compiler = Nothing
         GoTo Cleanup
     End If
-    
+    Set compiler = Nothing
+
+    ' Safety net: confirm files actually landed in the temp folder.
+    If Not fso.FolderExists(tempSvgFolder) Or fso.GetFolder(tempSvgFolder).Files.Count = 0 Then
+        MsgBox "Conversion reported success but no SVG files were found.", vbExclamation, "No Files Found"
+        GoTo Cleanup
+    End If
+
     ' Insert all SVG files found in the temp folder
     Dim svgFiles As Object
     Dim svgFile As Object
@@ -316,48 +307,80 @@ InvalidPageNumber:
 InsertError:
     MsgBox "Failed to insert one or more SVG images. Some files may be corrupted or in an unsupported format.", vbExclamation, "Insert Error"
     GoTo Cleanup
-    
+
+ComError:
+    MsgBox "Could not reach the Report Compiler COM server." & vbCrLf & vbCrLf & _
+           "Register it first by running:" & vbCrLf & _
+           "    uvx report-compiler com-server register", _
+           vbCritical, "COM Server Not Registered"
+    Set compiler = Nothing
+    GoTo Cleanup
+
 End Sub
 
 Public Sub RunReportCompiler(control As IRibbonControl)
-    ' Saves the active document and executes the Python compiler script.
-    
+    ' Saves the active document and compiles it via the Report Compiler COM server.
+    ' The COM server runs the compile on a background thread and we poll for status,
+    ' so Word stays responsive and we can report real success/failure.
+
     Dim doc As Document
     Dim inputPath As String
     Dim outputPath As String
-    Dim cmdString As String
-    
+    Dim compiler As Object
+    Dim jobId As String
+    Dim jobStatus As String
+    Dim waitTime As Single
+
     Set doc = ActiveDocument
-    
+
     ' Check if the document has been saved.
     If doc.Path = "" Then
         MsgBox "The document must be saved before the report can be compiled.", vbExclamation, "Save Document First"
         Exit Sub
     End If
-    
+
     ' Save any pending changes.
     doc.Save
-    
+
     ' Define input and output paths.
     inputPath = GetLocalPath(doc.FullName)
     outputPath = Replace(inputPath, ".docx", ".pdf")
-    
-    ' Build the command string for the shell. Paths are wrapped in quotes.
-    cmdString = "uvx report-compiler compile " & Chr(34) & inputPath & Chr(34) & " " & Chr(34) & outputPath & Chr(34)
-    
-    ' Execute the command. vbNormalFocus shows the console window so users can see progress.
-    On Error Resume Next
-    Shell cmdString, vbNormalFocus
-    If Err.Number <> 0 Then
-        MsgBox "Failed to start the compiler. Please check that uvx is installed and in your PATH.", vbCritical, "Execution Error"
-        On Error GoTo 0
-        Exit Sub
-    End If
+
+    ' Connect to the Report Compiler COM server (registered per-user via
+    ' 'uvx report-compiler com-server register').
+    On Error GoTo ComError
+    Set compiler = CreateObject("ReportCompiler.Application")
+
+    ' Start the compile (returns immediately with a job id) and poll for completion.
+    jobId = compiler.CompileAsync(inputPath, outputPath)
+
+    Do
+        ' Yield to Word and wait ~250ms between status checks (VBA has no Sleep).
+        waitTime = Timer + 0.25
+        Do While Timer < waitTime
+            DoEvents
+        Loop
+        jobStatus = compiler.GetJobStatus(jobId)
+    Loop While jobStatus = "pending" Or jobStatus = "running"
+
     On Error GoTo 0
-    
-    ' Inform the user that the process has started.
-    MsgBox "The report compiler has been started. You can monitor its progress in the console window.", vbInformation, "Compiler Started"
-    
+
+    If jobStatus = "succeeded" Then
+        MsgBox "Report compiled successfully:" & vbCrLf & outputPath, vbInformation, "Compile Complete"
+    Else
+        MsgBox "Report compilation failed:" & vbCrLf & compiler.GetJobMessage(jobId), vbCritical, "Compile Failed"
+    End If
+
+    ' Release the server (lets COM shut down the server process).
+    Set compiler = Nothing
+    Exit Sub
+
+ComError:
+    MsgBox "Could not reach the Report Compiler COM server." & vbCrLf & vbCrLf & _
+           "Register it first by running:" & vbCrLf & _
+           "    uvx report-compiler com-server register", _
+           vbCritical, "COM Server Not Registered"
+    Set compiler = Nothing
 End Sub
 
 

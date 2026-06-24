@@ -8,7 +8,16 @@ The Word integration provides:
 - **Ribbon buttons** to insert placeholders automatically
 - **File browser dialogs** for selecting PDF files with automatic relative path creation
 - **One-click compilation** directly from Word
-- **PDF to SVG conversion** for direct image insertion
+- **PDF page insertion** as high-quality images
+
+### Architecture
+
+Instead of spawning console processes, the ribbon talks to Report Compiler through a
+local **COM server** (`ProgID ReportCompiler.Application`). The **Compile Report** and
+**Insert PDF Page (Image)** buttons call the server, which runs the work on a background
+thread and reports status back — so Word stays responsive and shows a real
+success/failure message. This server must be registered once per user (no admin
+required); see [Register the COM server](#3-register-the-com-server).
 
 ### Platform Support
 
@@ -30,6 +39,13 @@ report-compiler --version
 ```
 
 ### 2. Install Word Template
+
+> **Note:** `ReportCompilerTemplate.dotm` is a build artifact, not tracked in git. If you
+> are working from a source checkout and the file is missing, build it first (requires
+> Word — see [Building the template](#building-the-template-from-sources)):
+> ```bash
+> uvx report-compiler word-integration build-template
+> ```
 
 **Option 1: Using uvx (Recommended)**
 
@@ -58,7 +74,31 @@ This will:
 
 3. **Restart Microsoft Word**
 
-### 3. Verify Installation
+### 3. Register the COM server
+
+The **Compile Report** and **Insert PDF Page (Image)** buttons talk to the
+`ReportCompiler.Application` COM server, which must be registered once per user:
+
+```bash
+uvx report-compiler com-server register
+```
+
+This will:
+- Ensure a stable install of Report Compiler exists (via `uv tool install`)
+- Register the server per-user under `HKCU\Software\Classes` (no administrator rights)
+
+Check it any time with:
+
+```bash
+uvx report-compiler com-server status      # "Registered: Yes"
+```
+
+To remove it later: `uvx report-compiler com-server unregister`.
+
+> The placeholder buttons (Insert Appendix / Overlay / Image) do **not** need the COM
+> server — they only insert text into the document.
+
+### 4. Verify Installation
 
 After installation, restart Microsoft Word and look for the "Report Compiler" tab in the ribbon. If you don't see it:
 
@@ -70,12 +110,13 @@ After installation, restart Microsoft Word and look for the "Report Compiler" ta
 2. **Verify the template is in the correct location**
 3. **Make sure macros are enabled** (see Troubleshooting section)
 
-You should see these buttons in the ribbon:
+You should see these buttons on the **Reporting Tools** tab:
 
 - **Insert Appendix** - Adds INSERT placeholders for full-page PDF content
-- **Insert Overlay** - Adds OVERLAY placeholders in tables for positioned content  
-- **PDF to SVG** - Converts PDF pages to SVG images for direct insertion
-- **Compile Report** - Runs the report compiler directly from Word
+- **Insert Overlay** - Adds OVERLAY placeholders in tables for positioned content
+- **Insert Image** - Adds IMAGE placeholders in tables for image files
+- **Insert PDF Page (Image)** - Converts PDF page(s) to SVG and inserts them as images (via the COM server)
+- **Compile Report** - Compiles the report directly from Word (via the COM server)
 
 ## Managing Word Integration
 
@@ -135,19 +176,31 @@ This will:
 5. Optional: Choose cropping behavior
 6. A table with the placeholder will be created: `[[OVERLAY: relative/path/file.pdf, page=1-3]]`
 
-### PDF to SVG Button
+### Insert Image Button
 
-1. Click "PDF to SVG"
-2. Select a PDF file
-3. Enter page numbers to convert (e.g., "1", "1-3", "1,3,5", or "all")
-4. SVG images will be created and can be inserted as regular images
+1. Place cursor where you want an image
+2. Click "Insert Image"
+3. Browse and select an image file
+4. A table with the placeholder will be created: `[[IMAGE: relative/path/image.png]]`
+
+### Insert PDF Page (Image) Button
+
+1. Save your document first (a temporary folder is created next to it)
+2. Click "Insert PDF Page (Image)"
+3. Select a PDF file
+4. Enter page numbers to convert (e.g., "1", "1-3", "1,3,5", or "all")
+5. The COM server converts the page(s) to SVG; Word inserts them as images at the cursor
 
 ### Compile Report Button
 
 1. Save your Word document first
 2. Click "Compile Report"
-3. Choose output PDF location
-4. The report will be compiled automatically
+3. The COM server compiles the document; the PDF is written next to it (same name, `.pdf`)
+4. Word stays responsive and shows a success or failure message when finished
+
+> Both buttons require the COM server to be registered (see
+> [Register the COM server](#3-register-the-com-server)). If it isn't, the button shows
+> a "COM Server Not Registered" message with the command to run.
 
 ## Troubleshooting
 
@@ -155,6 +208,11 @@ This will:
 - Go to File → Options → Trust Center → Trust Center Settings → Macro Settings
 - Select "Enable all macros" or "Disable all macros with notification"
 - Restart Word
+
+### "COM Server Not Registered"
+- The Compile Report / Insert PDF Page buttons couldn't reach the COM server
+- Register it: `uvx report-compiler com-server register`
+- Verify with `uvx report-compiler com-server status` (should say "Registered: Yes")
 
 ### "Report Compiler not found"
 - Ensure `report-compiler` command works in Command Prompt
@@ -193,21 +251,55 @@ The integration includes error handling for:
 
 ## Customization
 
-### Modifying the Template
+The template is **built from plain-text sources** — no Office RibbonX Editor or manual
+copy-paste required. The tracked sources live in `word_integration/`:
 
-To customize the Word integration:
+| Source | Purpose |
+|--------|---------|
+| `*.bas` (`ReportingTools.bas`, `LibFileTools.bas`) | VBA macro code |
+| `report_compiler_UI.xml` | Ribbon definition (becomes `customUI/customUI14.xml`) |
+| `icons/*.png` | Ribbon button images |
+| `skeleton/` | Static OPC parts (document/styles/theme/rels/content-types) |
 
-1. Open `ReportCompilerTemplate.dotm` in Word
-2. Go to Developer tab → Visual Basic (or press Alt+F11)
-3. Modify the `ReportingTools` module
-4. Save and restart Word
+`ReportCompilerTemplate.dotm` and `vbaProject.bin` are **build artifacts** (git-ignored),
+produced from those sources.
+
+### Building the template from sources
+
+A `.dotm` is an OPC ZIP; everything except `word/vbaProject.bin` is plain text/PNG, so
+the package is assembled with pure Python. `vbaProject.bin` is the compiled VBA blob —
+Word is the only reliable way to author it.
+
+```bash
+# Full rebuild: compile the .bas modules (needs Word) then package the .dotm
+uvx report-compiler word-integration build-template
+
+# Or run the stages individually:
+uvx report-compiler word-integration build-vba    # .bas -> vbaProject.bin (needs Word)
+uvx report-compiler word-integration package      # assemble the .dotm (no Word)
+
+# Then push the rebuilt template into Word's STARTUP folder
+uvx report-compiler word-integration update
+```
+
+`build-vba` requires Word's "Trust access to the VBA project object model" setting; the
+command enables it for you (`HKCU`). After any change to a `.bas` file or the ribbon XML,
+re-run `build-template` (or `package` if only the ribbon/icons changed) and `update`.
+
+### Modifying the macros
+
+1. Edit the `.bas` files in `word_integration/` (e.g. `ReportingTools.bas`)
+2. Run `build-template`, then `update`
+3. Restart Word
 
 ### Adding Custom Buttons
 
-You can add new ribbon buttons by:
-1. Modifying the `report_compiler_UI.xml` file
-2. Adding corresponding VBA procedures
-3. Updating the template file
+1. Add the button to `report_compiler_UI.xml` (referencing an `image=` id and an
+   `onAction=` callback)
+2. Add the matching image to `icons/` and a relationship in
+   `skeleton/customUI/_rels/customUI14.xml.rels`
+3. Add the corresponding VBA procedure to `ReportingTools.bas`
+4. Run `build-template`, then `update`
 
 ## Best Practices
 
