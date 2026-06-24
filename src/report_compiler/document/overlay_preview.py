@@ -85,10 +85,7 @@ def set_overlay_view(doc_path: str, mode: str) -> str:
     finally:
         _set_cursor(word, _WD_CURSOR_NORMAL)
         _refresh(word)
-        try:
-            word.StatusBar = False  # hand the status bar back to Word
-        except Exception:
-            pass
+        _clear_status(word)
 
 
 def _status(word, message: str) -> None:
@@ -106,6 +103,23 @@ def _status(word, message: str) -> None:
 def _set_cursor(word, cursor) -> None:
     try:
         word.System.Cursor = cursor
+    except Exception:
+        pass
+
+
+def _clear_status(word) -> None:
+    """Relinquish the status bar back to Word. Setting the Python bool False marshals as
+    the text 'False' over COM, so pass a real VT_BOOL (falling back to an empty string)."""
+    try:
+        import pythoncom
+        from win32com.client import VARIANT
+
+        word.StatusBar = VARIANT(pythoncom.VT_BOOL, False)
+        return
+    except Exception:
+        pass
+    try:
+        word.StatusBar = ""
     except Exception:
         pass
 
