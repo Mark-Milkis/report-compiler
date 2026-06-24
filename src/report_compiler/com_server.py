@@ -167,6 +167,7 @@ class ReportCompilerCOMServer:
         "CompileAsync",
         "SvgImportAsync",
         "LaunchOverlayDialog",
+        "LaunchLinkManager",
         "SetOverlayPreview",
         "GetJobStatus",
         "GetJobMessage",
@@ -220,6 +221,14 @@ class ReportCompilerCOMServer:
                 "--anchor",
                 str(anchor),
             ],
+            close_fds=True,
+        )
+        return "launched"
+
+    def LaunchLinkManager(self, doc_path):
+        """Spawn the Link Manager GUI as its own process and return immediately."""
+        subprocess.Popen(
+            [sys.executable, "-m", "report_compiler.gui", "link-manager", "--doc", str(doc_path)],
             close_fds=True,
         )
         return "launched"
