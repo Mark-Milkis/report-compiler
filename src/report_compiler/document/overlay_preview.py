@@ -56,6 +56,7 @@ def set_overlay_view(doc_path: str, mode: str) -> str:
         _restore_table(table)
 
     if mode == "tags":
+        _refresh(word)
         return f"Overlay view: tags ({len(overlays)} overlay(s))."
 
     rendered, errors = 0, 0
@@ -72,9 +73,22 @@ def set_overlay_view(doc_path: str, mode: str) -> str:
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    _refresh(word)
     msg = f"Overlay view: {mode} ({rendered} overlay(s)"
     msg += f", {errors} error(s))" if errors else ")"
     return msg
+
+
+def _refresh(word) -> None:
+    """Force the live Word window to repaint after cross-process edits."""
+    try:
+        word.ScreenUpdating = True
+    except Exception:
+        pass
+    try:
+        word.ScreenRefresh()
+    except Exception:
+        pass
 
 
 # --- document / table helpers -------------------------------------------------
@@ -122,10 +136,19 @@ def _tag_of_table(table):
 def _restore_table(table) -> None:
     """Collapse to a single row and set the cell to the plain, visible tag."""
     tag = _tag_of_table(table) or ""
+    # Explicitly delete the preview images (overlay tables hold only our previews).
+    try:
+        for shape in list(table.Range.InlineShapes):
+            try:
+                shape.Delete()
+            except Exception:
+                pass
+    except Exception:
+        pass
     while table.Rows.Count > 1:
         table.Rows(table.Rows.Count).Delete()
     cell = table.Cell(1, 1)
-    cell.Range.Text = tag  # replaces text and removes any inline images
+    cell.Range.Text = tag  # replaces remaining text content
     cell.Range.Font.Hidden = False
 
 
@@ -238,7 +261,14 @@ def _mark_error(table, message: str) -> None:
 
 
 def _column_width(table):
-    try:
-        return table.Columns(1).Width
-    except Exception:
-        return None
+    """A sane image width in points. Word reports wdUndefined (a huge sentinel) for
+    autofit tables, which would make the picture overflow the cell — so clamp and fall
+    back to a reasonable default."""
+    for getter in (lambda: table.Columns(1).Width, lambda: table.Cell(1, 1).Width):
+        try:
+            width = getter()
+            if width and 0 < width < 1000:
+                return width
+        except Exception:
+            pass
+    return 400.0  # ~5.5 inches
