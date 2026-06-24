@@ -123,6 +123,34 @@ def _run_compile(job_id: str, input_path: str, output_path: str) -> None:
             pythoncom.CoUninitialize()
 
 
+def _run_svg_import(job_id: str, pdf_path: str, output_path: str, page: str) -> None:
+    """Worker-thread body: convert PDF page(s) to SVG and record the outcome.
+
+    PDF->SVG uses PyMuPDF (no Word), so no COM init is needed on this thread.
+    """
+    try:
+        _JOBS.update(job_id, status=RUNNING)
+
+        from report_compiler.cli import handle_svg_import
+        from report_compiler.utils.logging_config import get_logger, setup_logging
+
+        log_file = os.path.splitext(output_path)[0] + ".svg.log"
+        setup_logging(log_file=log_file, verbose=True)
+        logger = get_logger()
+
+        rc = handle_svg_import(pdf_path, output_path, page, logger)
+        if rc == 0:
+            _JOBS.update(job_id, status=SUCCEEDED, message=f"Converted to {output_path}")
+        else:
+            _JOBS.update(
+                job_id,
+                status=FAILED,
+                message=f"SVG conversion failed. See log: {log_file}",
+            )
+    except Exception as exc:  # noqa: BLE001 - surface any failure to the COM client
+        _JOBS.update(job_id, status=FAILED, message=str(exc))
+
+
 # ---------------------------------------------------------------------------
 # COM-exposed object
 # ---------------------------------------------------------------------------
@@ -135,7 +163,7 @@ class ReportCompilerCOMServer:
     polls :meth:`GetJobStatus` / :meth:`GetJobMessage`.
     """
 
-    _public_methods_ = ["CompileAsync", "GetJobStatus", "GetJobMessage"]
+    _public_methods_ = ["CompileAsync", "SvgImportAsync", "GetJobStatus", "GetJobMessage"]
     _reg_clsid_ = CLSID
     _reg_progid_ = PROGID
     _reg_desc_ = DESC
@@ -147,6 +175,21 @@ class ReportCompilerCOMServer:
         thread = threading.Thread(
             target=_run_compile,
             args=(job_id, str(input_path), str(output_path)),
+            daemon=True,
+        )
+        thread.start()
+        return job_id
+
+    def SvgImportAsync(self, pdf_path, output_path, page):
+        """Start a PDF->SVG conversion on a background thread; return a job id.
+
+        ``page`` is a spec string: a single page, range ("1-3"), list ("1,3,5"), or
+        "all". Multiple pages produce ``<stem>_page_<n>.svg`` files next to output_path.
+        """
+        job_id = _JOBS.create(str(output_path))
+        thread = threading.Thread(
+            target=_run_svg_import,
+            args=(job_id, str(pdf_path), str(output_path), str(page)),
             daemon=True,
         )
         thread.start()
