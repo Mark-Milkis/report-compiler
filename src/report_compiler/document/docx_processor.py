@@ -6,6 +6,7 @@ import os
 from typing import Dict, List, Optional
 from docx import Document
 from docx.shared import Inches
+from docx.oxml.ns import qn
 from PIL import Image
 from ..core.config import Config
 from ..utils.logging_config import get_docx_logger
@@ -18,6 +19,88 @@ class DocxProcessor:
 
     def __init__(self):
         self.logger = get_docx_logger()
+
+    # --- In-document overlay-preview normalization ---------------------------
+    # The in-document preview feature can leave a saved docx with overlay tables
+    # expanded into multiple rows and filled with low-res preview images. Those would
+    # break compilation (the parser only treats 1x1 tables as overlays, and the images
+    # would leak into output). This collapses every overlay table back to its canonical
+    # 1x1 tag form so any compile path recovers a clean, full-resolution result.
+
+    def normalize_overlay_previews(self, docx_path: str) -> int:
+        """Collapse in-document overlay previews back to canonical tag tables, in place.
+
+        Returns the number of overlay tables that were normalized.
+        """
+        doc = Document(docx_path)
+        count = 0
+        for table in doc.tables:
+            if not self._is_single_column(table):
+                continue
+            tag = self._overlay_tag_of_table(table)
+            if tag is None:
+                continue
+            self._remove_preview_images(table)
+            self._collapse_overlay_table(table, tag)
+            count += 1
+        if count:
+            doc.save(docx_path)
+        return count
+
+    @staticmethod
+    def _is_single_column(table) -> bool:
+        try:
+            return len(table.rows) >= 1 and all(len(row.cells) == 1 for row in table.rows)
+        except Exception:
+            return False
+
+    def _overlay_tag_of_table(self, table) -> Optional[str]:
+        """Return the overlay tag for this table, or None if it isn't an overlay.
+
+        Prefers the tag from a cell's text (hidden text still appears in .text); falls
+        back to the redundant copy stored in a preview image's AltText.
+        """
+        for row in table.rows:
+            match = Config.OVERLAY_REGEX.search(row.cells[0].text)
+            if match:
+                return match.group(0)
+        return self._tag_from_preview_image(table)
+
+    def _tag_from_preview_image(self, table) -> Optional[str]:
+        marker = Config.OVERLAY_PREVIEW_MARKER
+        for docpr in table._tbl.iter(qn("wp:docPr")):
+            descr = docpr.get("descr") or ""
+            if descr.startswith(marker):
+                tag = descr[len(marker):].lstrip(":").strip()
+                if Config.OVERLAY_REGEX.search(tag):
+                    return Config.OVERLAY_REGEX.search(tag).group(0)
+        return None
+
+    def _remove_preview_images(self, table) -> None:
+        """Delete runs holding a preview image (identified by the marker in AltText)."""
+        marker = Config.OVERLAY_PREVIEW_MARKER
+        for docpr in list(table._tbl.iter(qn("wp:docPr"))):
+            if not (docpr.get("descr") or "").startswith(marker):
+                continue
+            run = docpr
+            while run is not None and run.tag != qn("w:r"):
+                run = run.getparent()
+            if run is not None and run.getparent() is not None:
+                run.getparent().remove(run)
+
+    def _collapse_overlay_table(self, table, tag: str) -> None:
+        """Keep only the tag-bearing row and set its cell to the plain tag text."""
+        tbl = table._tbl
+        rows = table.rows
+        keep_idx = 0
+        for i, row in enumerate(rows):
+            if Config.OVERLAY_REGEX.search(row.cells[0].text):
+                keep_idx = i
+                break
+        for i, tr in enumerate(tbl.findall(qn("w:tr"))):
+            if i != keep_idx:
+                tbl.remove(tr)
+        table.rows[0].cells[0].text = tag
 
     def create_modified_docx(
         self, input_path: str, placeholders: Dict[str, List[Dict]], output_path: str

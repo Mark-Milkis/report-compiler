@@ -422,7 +422,54 @@ Private Function GetImagePath() As String
             GetImagePath = "" ' User cancelled
         End If
     End With
-    
+
 End Function
+
+
+Public Sub OnOverlayViewChange(control As IRibbonControl, id As String, index As Integer)
+    ' Ribbon "Overlay view" dropdown: 0 = Tags, 1 = Quick preview, 2 = Full preview.
+    Dim mode As String
+    Select Case index
+        Case 1
+            mode = "quick"
+        Case 2
+            mode = "full"
+        Case Else
+            mode = "tags"
+    End Select
+    ApplyOverlayView mode
+End Sub
+
+Public Sub RepairOverlays(control As IRibbonControl)
+    ' Force every overlay back to its canonical tag form (recovery).
+    ApplyOverlayView "tags"
+End Sub
+
+Private Sub ApplyOverlayView(mode As String)
+    ' Drives the COM server to switch the whole document's overlay view.
+    Dim doc As Document
+    Dim localDocPath As String
+    Dim compiler As Object
+
+    Set doc = ActiveDocument
+    If doc.Path = "" Then
+        MsgBox "Please save the document first.", vbExclamation, "Save Document"
+        Exit Sub
+    End If
+    localDocPath = GetLocalPath(doc.FullName, , True)
+
+    On Error GoTo ComError
+    Set compiler = CreateObject("ReportCompiler.Application")
+    compiler.SetOverlayPreview localDocPath, mode
+    Set compiler = Nothing
+    Exit Sub
+
+ComError:
+    MsgBox "Could not reach the Report Compiler COM server." & vbCrLf & vbCrLf & _
+           "Register it first by running:" & vbCrLf & _
+           "    uvx report-compiler com-server register", _
+           vbCritical, "COM Server Not Registered"
+    Set compiler = Nothing
+End Sub
 
 
