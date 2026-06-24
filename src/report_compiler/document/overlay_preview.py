@@ -212,17 +212,32 @@ def _reset_cell(cell) -> None:
     cell.Range.Font.Hidden = False
 
 
-def _append_hidden_tag(cell, tag: str) -> None:
-    """Append the tag at the end of the cell and hide only that run (kept for compile)."""
+def _inside_end(cell):
+    """A collapsed range just *inside* the cell, before its end-of-cell marker.
+
+    A cell's Range ends at the cell marker; collapsing to that end and inserting there
+    spills content past the marker, which in the last cell of a row creates a brand-new
+    cell (column). Stepping back one character keeps inserts inside the cell.
+    """
     rng = cell.Range
+    try:
+        if rng.End - 1 >= rng.Start:
+            rng.End = rng.End - 1
+    except Exception:
+        pass
     rng.Collapse(_WD_COLLAPSE_END)
+    return rng
+
+
+def _append_hidden_tag(cell, tag: str) -> None:
+    """Append the tag inside the cell and hide only that run (kept for compile)."""
+    rng = _inside_end(cell)
     rng.Text = tag
     rng.Font.Hidden = True
 
 
 def _insert_image(cell, png_path: str, tag: str, col_width) -> None:
-    rng = cell.Range
-    rng.Collapse(_WD_COLLAPSE_END)
+    rng = _inside_end(cell)
     rng.Font.Hidden = False  # ensure the picture's run is not hidden-formatted
     shape = rng.InlineShapes.AddPicture(FileName=png_path, LinkToFile=False, SaveWithDocument=True)
     try:
@@ -238,8 +253,7 @@ def _insert_image(cell, png_path: str, tag: str, col_width) -> None:
 
 
 def _append_caption(cell, text: str) -> None:
-    rng = cell.Range
-    rng.Collapse(_WD_COLLAPSE_END)
+    rng = _inside_end(cell)
     rng.Text = "\r" + text
     rng.Font.Hidden = False
 
@@ -250,8 +264,7 @@ def _mark_error(table, message: str) -> None:
         tag = _tag_of_table(table) or ""
         cell = table.Cell(1, 1)
         _reset_cell(cell)
-        rng = cell.Range
-        rng.Collapse(_WD_COLLAPSE_END)
+        rng = _inside_end(cell)
         rng.Text = "⚠ " + message
         rng.Font.Hidden = False
         rng.Font.Color = _WD_COLOR_RED
