@@ -4,6 +4,7 @@ PDF overlay processing for table-based insertions.
 
 import fitz  # PyMuPDF
 from typing import Dict, List, Any
+from ..core.config import Config
 from ..utils.conversions import points_to_inches
 from ..utils.page_selector import PageSelector
 from ..utils.logging_config import get_overlay_logger
@@ -101,7 +102,7 @@ class OverlayProcessor:
             placeholder = data['placeholder']
             # Use the resolved absolute path, which is guaranteed by the compiler.
             pdf_path = placeholder['resolved_path']
-            crop_enabled = placeholder.get('crop_enabled', True)
+            crop_enabled = placeholder.get('crop_enabled', Config.DEFAULT_CROP_ENABLED)
             # Log the original path for user-facing messages.
             self.logger.info("  Processing overlay %d: %s", idx, placeholder['file_path'])
 

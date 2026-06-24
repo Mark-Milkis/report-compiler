@@ -21,7 +21,7 @@ class Config:
     
     # PDF processing defaults
     DEFAULT_PADDING = 32  # points
-    DEFAULT_CROP_ENABLED = True
+    DEFAULT_CROP_ENABLED = False
     
     # File handling
     TEMP_FILE_PREFIX = "~temp_"

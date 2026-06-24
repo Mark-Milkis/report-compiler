@@ -62,61 +62,46 @@ Public Sub InsertAppendixPlaceholder(control As IRibbonControl)
 End Sub
 
 Public Sub InsertOverlayPlaceholder(control As IRibbonControl)
-    ' Inserts a table-based placeholder for overlaying a PDF page.
-    
-    Dim pdfPath As String
+    ' Launches the PDF Overlay dialog via the COM server. The dialog (Python/PySide6)
+    ' shows page previews, lets the user pick a page range, then inserts the
+    ' [[OVERLAY: ...]] placeholder back into this document at the bookmark below.
+
+    Dim doc As Document
     Dim localDocPath As String
-    Dim localPdfPath As String
-    Dim relativePdfPath As String
-    Dim pageRange As String
-    Dim cropText As String
-    Dim placeholderText As String
-    Dim tbl As Table
-    Dim cc As ContentControl
-    
+    Dim anchorName As String
+    Dim compiler As Object
+
+    Set doc = ActiveDocument
+
     ' Ensure the document is saved before creating a relative path.
-    If ActiveDocument.Path = "" Then
+    If doc.Path = "" Then
         MsgBox "Please save the document first to create a relative path for the overlay.", vbExclamation, "Save Document"
         Exit Sub
     End If
 
-    ' Get the path to the PDF file from the user.
-    pdfPath = GetPdfPath()
-    If pdfPath = "" Then Exit Sub ' User cancelled
-    
-    ' Convert OneDrive/SharePoint paths to local paths for both document and selected PDF
-    localDocPath = GetLocalPath(ActiveDocument.Path, , True)
-    localPdfPath = GetLocalPath(pdfPath, , True)
-    
-    ' Calculate relative path using LibFileTools
-    relativePdfPath = GetRelativePath(localPdfPath, localDocPath)
-    
-    ' Prompt for optional parameters.
-    pageRange = InputBox("Enter an optional page range (e.g., 1-3,5). Leave blank for all pages.", "Overlay Page Selection")
-    
-    If MsgBox("Auto-crop the overlay to its content (removes whitespace)?", vbYesNo + vbQuestion, "Overlay Cropping") = vbNo Then
-        cropText = ", crop=false"
-    End If
-    
-    ' Construct the placeholder string.
-    placeholderText = "[[OVERLAY: " & relativePdfPath
-    If pageRange <> "" Then
-        placeholderText = placeholderText & ", page=" & pageRange
-    End If
-    placeholderText = placeholderText & cropText & "]]"
-    
-    ' Insert a 1x1 table at the current selection.
-    Set tbl = ActiveDocument.Tables.Add(Range:=Selection.Range, NumRows:=1, NumColumns:=1)
-    
-    ' Style the table to make it visible as a placeholder.
-    With tbl.Borders
-        .Enable = False
+    ' Resolve OneDrive/SharePoint path to a local path (kept in LibFileTools).
+    localDocPath = GetLocalPath(doc.FullName, , True)
 
-    End With
-    
-    ' Insert the placeholder text into the cell as plain text (no content control).
-    tbl.Cell(1, 1).Range.Text = placeholderText
-    
+    ' Drop a bookmark at the current selection so the dialog knows where to insert.
+    anchorName = "RC_OverlayAnchor"
+    On Error Resume Next
+    doc.Bookmarks(anchorName).Delete
+    On Error GoTo 0
+    doc.Bookmarks.Add Name:=anchorName, Range:=Selection.Range
+
+    ' Launch the dialog (returns immediately; Word stays responsive).
+    On Error GoTo ComError
+    Set compiler = CreateObject("ReportCompiler.Application")
+    compiler.LaunchOverlayDialog localDocPath, anchorName
+    Set compiler = Nothing
+    Exit Sub
+
+ComError:
+    MsgBox "Could not reach the Report Compiler COM server." & vbCrLf & vbCrLf & _
+           "Register it first by running:" & vbCrLf & _
+           "    uvx report-compiler com-server register", _
+           vbCritical, "COM Server Not Registered"
+    Set compiler = Nothing
 End Sub
 
 Public Sub InsertImagePlaceholder(control As IRibbonControl)
