@@ -147,8 +147,9 @@ def _apply_table(table, mode: str, doc_path: str, tmp_dir: str) -> None:
     if mode == "quick":
         pngs = _render_pages(pdf_path, indices[:1], parsed["crop"], tmp_dir, _QUICK_WIDTH_PX)
         cell = table.Cell(1, 1)
-        _set_hidden_tag(cell, tag)
+        _reset_cell(cell)
         _insert_image(cell, pngs[0], tag, col_width)
+        _append_hidden_tag(cell, tag)
         caption = f"{os.path.basename(parsed['file'])} · p.{format_spec(set(indices))}"
         if len(indices) > 1:
             caption += f"  (+{len(indices) - 1} more)"
@@ -156,12 +157,13 @@ def _apply_table(table, mode: str, doc_path: str, tmp_dir: str) -> None:
     else:  # full
         pngs = _render_pages(pdf_path, indices, parsed["crop"], tmp_dir, _FULL_WIDTH_PX)
         cell = table.Cell(1, 1)
-        _set_hidden_tag(cell, tag)
+        _reset_cell(cell)
         _insert_image(cell, pngs[0], tag, col_width)
+        _append_hidden_tag(cell, tag)
         for png in pngs[1:]:
             table.Rows.Add()
             new_cell = table.Cell(table.Rows.Count, 1)
-            new_cell.Range.Text = ""
+            _reset_cell(new_cell)
             _insert_image(new_cell, png, tag, col_width)
 
 
@@ -181,14 +183,24 @@ def _render_pages(pdf_path, indices, crop, tmp_dir, width_px):
     return out
 
 
-def _set_hidden_tag(cell, tag: str) -> None:
-    cell.Range.Text = tag
-    cell.Range.Font.Hidden = True
+def _reset_cell(cell) -> None:
+    """Empty a cell and clear hidden formatting so inserted images stay visible."""
+    cell.Range.Text = ""
+    cell.Range.Font.Hidden = False
+
+
+def _append_hidden_tag(cell, tag: str) -> None:
+    """Append the tag at the end of the cell and hide only that run (kept for compile)."""
+    rng = cell.Range
+    rng.Collapse(_WD_COLLAPSE_END)
+    rng.Text = tag
+    rng.Font.Hidden = True
 
 
 def _insert_image(cell, png_path: str, tag: str, col_width) -> None:
     rng = cell.Range
     rng.Collapse(_WD_COLLAPSE_END)
+    rng.Font.Hidden = False  # ensure the picture's run is not hidden-formatted
     shape = rng.InlineShapes.AddPicture(FileName=png_path, LinkToFile=False, SaveWithDocument=True)
     try:
         shape.LockAspectRatio = -1  # msoTrue
@@ -214,12 +226,13 @@ def _mark_error(table, message: str) -> None:
     try:
         tag = _tag_of_table(table) or ""
         cell = table.Cell(1, 1)
-        _set_hidden_tag(cell, tag)
+        _reset_cell(cell)
         rng = cell.Range
         rng.Collapse(_WD_COLLAPSE_END)
-        rng.Text = "\r⚠ " + message
+        rng.Text = "⚠ " + message
         rng.Font.Hidden = False
         rng.Font.Color = _WD_COLOR_RED
+        _append_hidden_tag(cell, tag)
     except Exception:
         pass
 
